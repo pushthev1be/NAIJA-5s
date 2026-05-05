@@ -67,7 +67,7 @@ addEventListener('keydown',e=>{
 });
 addEventListener('keyup',e=>{ K[e.code]=false; });
 
-let _prevTackleBtn=false, _prevSwBtn=false, _prevPassBtn=false;
+let _prevTackleBtn=false, _prevSwBtn=false, _prevPassBtn=false, _prevPauseBtn=false;
 function getGP(){ const gs=navigator.getGamepads?.()??[]; for(const g of gs)if(g)return g; return null; }
 
 function readInput(){
@@ -114,7 +114,9 @@ function readInput(){
   }
   const len=Math.hypot(dx,dy); if(len>1){dx/=len;dy/=len;}
   const aimActive=Math.hypot(aimDx,aimDy)>0.15;
-  return{dx,dy,sprint,kickHeld,tacklePressed,swPressed,passPressed,aimDx,aimDy,aimActive};
+  const pauseRaw=!!(K.Escape||(g?.buttons[9]?.pressed));
+  const pausePressed=pauseRaw&&!_prevPauseBtn; _prevPauseBtn=pauseRaw;
+  return{dx,dy,sprint,kickHeld,tacklePressed,swPressed,passPressed,aimDx,aimDy,aimActive,pausePressed};
 }
 
 // ── VIBRATION ─────────────────────────────────────────────────────────────────
@@ -622,6 +624,7 @@ function mkBall(){
 
 // ── GAME STATE ────────────────────────────────────────────────────────────────
 let phase,score,timer,home,away,ball,ctrlIdx,koTeam,goalFlash;
+let paused=false;
 let ctrlIdx2=0, p2Mode=false;
 let slowMoTimer=0;
 let koTimer=0, koPassDone=false, koHolder=null, koPartner=null;
@@ -673,7 +676,7 @@ const CMTRY_FALLBACK={
 };
 
 async function callGeminiLive(apiKey,prompt){
-  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
   const resp=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
   if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
@@ -769,7 +772,7 @@ function initMatch(hDef=matchHomeDef,aDef=matchAwayDef){
   ctrlIdx2=away.findIndex(p=>p.role==='st');
   if(ctrlIdx2<0)ctrlIdx2=away.length-1;
   if(p2Mode)away[ctrlIdx2].controlled=true;
-  score=[0,0]; timer=MATCH_S; phase='kickoff'; koTeam=0; goalFlash=0;
+  score=[0,0]; timer=MATCH_S; phase='kickoff'; koTeam=0; goalFlash=0; paused=false;
   trails.length=0; particles.length=0; callouts.length=0;
   initWeather();
   buildCrowd();
@@ -947,6 +950,11 @@ function aiUpdate(players,opps,dt){
   const d2    =isHome?1:-1;
   const AI=POWER.ai, MV=MOVEMENT, GK=BALANCE.gk;
   const SB=SKILLS.speedBoost, STL=SKILLS.steal, PS=SKILLS.powerShot, LS=SKILLS.longShot;
+  // Comeback aggression: boost when losing by 3+ goals
+  const myScore=score[isHome?0:1], oppScore=score[isHome?1:0];
+  const deficit=oppScore-myScore;
+  const comebackMult=deficit>=3?Math.min(2.4,1+deficit*0.30):1.0;
+  const pressBoost=deficit>=3?1.35:1.0;
 
   for(const p of players){
     if(p.controlled)continue;
@@ -996,6 +1004,7 @@ function aiUpdate(players,opps,dt){
           const clampedY=clamp(predY,MY-GH/2+GK.goalMouthInset,MY+GH/2-GK.goalMouthInset);
           tx=gkX; ty=clampedY;
           p.diving=true; p.state='dive'; didDive=true;
+          if(gkR>=3&&Math.random()<0.55)showCallout('DIVING SAVE! 🤸',p.x,p.y-28,60);
         }
       }
       if(!didDive){
@@ -1004,7 +1013,25 @@ function aiUpdate(players,opps,dt){
         if(!opHas&&dst(p,{x:gkX,y:MY})>MV.aiArrivalDist)ty=p.hy;
         if(!ball.owner&&dst(p,ball)<MV.aiGKCollectRange){tx=ball.x;ty=ball.y;}
       }
-      if(hasBall){aiShoot(p,goalX,AI.gkClearVelocity);continue;}
+      if(hasBall){
+        if(gkR>=2){
+          // Controlled rebound — punch wide toward open space
+          const wideY=ball.y<MY?PY+PH*0.2:PY+PH*0.8;
+          const midX=isHome?MX-PW*0.22:MX+PW*0.22;
+          const[cbx,cby]=nrm(midX-ball.x,wideY-ball.y);
+          const clrSpd=AI.gkClearVelocity*(gkR>=3?2.4:1.7);
+          ball.vx=cbx*clrSpd; ball.vy=cby*clrSpd;
+          ball.vz=1.8; ball.owner=null; lastKicker=p;
+          p.kickCD=AI.kickCooldown; p.state='kick';
+          spawnSparks(p.x,p.y,'kick',4);
+          const rebLbl=gkR>=3?'KEEPER LAUNCH! 🚀':'REBOUND CLEAR! 🥊';
+          showCallout(rebLbl,p.x,p.y-28,60);
+          p.speechBubble={text:gkR>=3?'MINE!!!':'OUT!!!',t:0,maxT:120};
+        } else {
+          aiShoot(p,goalX,AI.gkClearVelocity);
+        }
+        continue;
+      }
 
     } else if(hasBall){
       const isAtk=p.role==='st'||p.role==='lw'||p.role==='rw';
@@ -1023,24 +1050,24 @@ function aiUpdate(players,opps,dt){
         ?(p.x>PX+PW-PBW-boxPad&&Math.abs(p.y-MY)<PBH/2+boxPad*0.6)
         :(p.x<PX+PBW+boxPad&&Math.abs(p.y-MY)<PBH/2+boxPad*0.6);
       if(nearBox&&p.kickCD<=0){
-        if(canSkill(p,'powerShot')&&Math.random()<PS.activateChance*starSkill*dt){
+        if(canSkill(p,'powerShot')&&Math.random()<PS.activateChance*starSkill*comebackMult*dt){
           activateSkill(p,'powerShot');aiShoot(p,goalX,PS.velocity);
-        } else if(!isDef){
+        } else if(!isDef||deficit>=3){
           if(isAtk&&Math.random()<0.9)aiStrikerShoot(p,goalX);
           else aiShoot(p,goalX,AI.normalVelocity+Math.random()*AI.normalVariance);
         } else {
           aiPass(p,players);  // defenders lay it off instead of shooting
         }
-        tx=p.x; ty=p.y;  // hold position after shot — don't run into the box
+        tx=p.x; ty=p.y;
       } else {
         const dg=Math.abs(p.x-goalX);
         const effectiveRange=AI.shootRange*starRange;
         if(dg<effectiveRange&&p.kickCD<=0){
-          if(canSkill(p,'powerShot')&&dg<PS.goalRange*starRange&&Math.random()<PS.activateChance*starSkill*dt){
+          if(canSkill(p,'powerShot')&&dg<PS.goalRange*starRange&&Math.random()<PS.activateChance*starSkill*comebackMult*dt){
             activateSkill(p,'powerShot');aiShoot(p,goalX,PS.velocity);
-          } else if(canSkill(p,'longShot')&&dg<LS.maxRange*starRange&&dg>LS.minRange&&Math.random()<LS.activateChance*starSkill*dt){
+          } else if(canSkill(p,'longShot')&&dg<LS.maxRange*starRange&&dg>LS.minRange&&Math.random()<LS.activateChance*starSkill*comebackMult*dt){
             activateSkill(p,'longShot');aiShoot(p,goalX,LS.velocity);
-          } else if(dg<PS.goalRange*starRange&&Math.random()<AI.normalShootChance*shootMult*(p.ego>=3?1.28:1)*starSkill*dt){
+          } else if(dg<PS.goalRange*starRange&&Math.random()<AI.normalShootChance*shootMult*(p.ego>=3?1.28:1)*starSkill*comebackMult*dt){
             if(isAtk&&Math.random()<0.9)aiStrikerShoot(p,goalX);
             else aiShoot(p,goalX,AI.normalVelocity+Math.random()*AI.normalVariance);
           }
@@ -1048,31 +1075,38 @@ function aiUpdate(players,opps,dt){
       }
       // Defenders pass proactively; 3★ attackers resist pressure longer
       const pressurePassMult=p.overallStars>=3?0.42:1;
-      if(isDef&&p.kickCD<=0&&Math.random()<AI.passChance*2*dt)aiPass(p,players);
-      if(opps.some(o=>dst(o,p)<AI.passPressureRange)&&Math.random()<AI.passChance*passMult*pressurePassMult*dt)aiPass(p,players);
+      if(isDef&&p.kickCD<=0&&Math.random()<AI.passChance*2*comebackMult*dt)aiPass(p,players);
+      if(opps.some(o=>dst(o,p)<AI.passPressureRange)&&Math.random()<AI.passChance*passMult*pressurePassMult*comebackMult*dt)aiPass(p,players);
 
     } else if(tmHas){
-      // ── SUPPORT RUNS by role ───────────────────────────────────────────────
+      // ── SUPPORT RUNS — players open up for passes ──────────────────────────
+      const carrier=ball.owner;
       if(p.role==='st'){
-        // 3★ strikers make deeper, more threatening runs
         const runDepth=MV.aiStrikerRunOffset*(p.overallStars>=3?2.2:p.overallStars>=2?1.4:1);
-        tx=clamp(p.hx+d2*runDepth,PX+PRAD,PX+PW-PRAD);ty=p.hy;
+        tx=clamp(p.hx+d2*runDepth,PX+PRAD,PX+PW-PRAD); ty=p.hy;
       } else if(p.role==='lw'||p.role==='rw'){
-        // Wingers hold their wide channels — don't converge on ball
-        tx=p.hx; ty=p.hy;
-      } else if(p.role==='lcm'||p.role==='cm'||p.role==='rcm'){
-        // Midfielders hold shape, shift y only gently with ball
-        tx=p.hx; ty=p.hy+(ball.y-MY)*0.10;
+        // Run forward in wide channel when carrier is in opposition half
+        const inFinalThird=carrier&&(isHome?carrier.x>MX+PW*0.08:carrier.x<MX-PW*0.08);
+        tx=inFinalThird?clamp(p.hx+d2*55,PX+PRAD,PX+PW-PRAD):p.hx;
+        ty=p.hy;
+      } else if(p.role==='lcm'||p.role==='rcm'){
+        // Spread into passing triangle — offset sideways from carrier y
+        const cY=carrier?carrier.y:MY;
+        const side=p.role==='lcm'?-1:1;
+        ty=clamp(MY+side*55+(cY-MY)*0.18,PY+PRAD,PY+PH-PRAD);
+        tx=carrier?clamp(carrier.x+d2*28,PX+PRAD,PX+PW-PRAD):p.hx;
+      } else if(p.role==='cm'){
+        tx=carrier?clamp((p.hx+carrier.x)*0.5,PX+PRAD,PX+PW-PRAD):p.hx;
+        ty=p.hy+(ball.y-MY)*0.12;
       } else if(p.role==='lb'||p.role==='rb'){
-        // Fullbacks stay back unless safe to push
         const safeToOverlap=!opHas;
-        if(safeToOverlap)tx=clamp(p.hx+d2*28,PX+PRAD,PX+PW-PRAD);
+        if(safeToOverlap)tx=clamp(p.hx+d2*35,PX+PRAD,PX+PW-PRAD);
         ty=p.hy;
       } else{tx=p.hx;ty=p.hy;}
 
     } else if(opHas){
       const r=MV.aiPressRadius[p.role]??95;
-      const effectiveR=r*(p.overallStars>=3?1.45:p.overallStars>=2?1.18:1);
+      const effectiveR=r*(p.overallStars>=3?1.45:p.overallStars>=2?1.18:1)*pressBoost;
       if(!p.feinted&&dst(p,ball)<effectiveR){
         tx=ball.x;ty=ball.y;
         const stlStars=p.starLevels?.steal??1;
@@ -1205,12 +1239,16 @@ function goalScore(team){
   if(phase!=='play')return;
   score[team]++;
   phase='goal'; goalFlash=90;
-  // Ball bounces inside the net
   ball.vx*=0.28; ball.vy=(Math.random()-0.5)*2.2; ball.vz=2.2+Math.random()*1.8;
   showCallout(team===0?'NAIJA GOAL! 🔥':'AWAY GOAL!',MX,MY-38,100);
   spawnSparks(MX,MY,'kick',22);
   rumbleGoal();
   assignGoalBubbles(team===0?'home':'away');
+  // Scorer celebration emote — override generic win bubble
+  if(lastKicker){
+    const CEL=['🎉 GET IN!','🔥 FIRE GOAL!','⚽ YESSS!','💥 SENT IT!','🤩 NAIJA!!!','😤 TOO EASY!','🙌 BANGER!'];
+    lastKicker.speechBubble={text:CEL[Math.floor(Math.random()*CEL.length)],t:0,maxT:280};
+  }
   triggerCommentary('goal',lastKicker?.name??(team===0?'NAIJA':'AWAY'));
   setTimeout(()=>resetKO(team), RULES.goalResetDelay);
 }
@@ -1784,12 +1822,38 @@ initDevPanel(devStats, ()=>score, getCpuMode, setCpuMode);
 const pitchBg=buildPitch();
 let lastTS=0;
 
+function drawPauseOverlay(){
+  cx.fillStyle='rgba(0,0,0,0.72)'; cx.fillRect(0,0,LW,LH);
+  // scanlines
+  cx.fillStyle='rgba(0,0,0,0.18)';
+  for(let y=0;y<LH;y+=3) cx.fillRect(0,y,LW,1);
+  // panel
+  const pw=280,ph=130,px=MX-pw/2,py=MY-ph/2;
+  notchedPath(px,py,pw,ph,12);
+  cx.fillStyle='#0a140a'; cx.fill();
+  cx.strokeStyle=UI.gold; cx.lineWidth=2; cx.stroke();
+  // PAUSED text
+  cx.font="bold 22px 'Orbitron',monospace"; cx.textAlign='center';
+  cx.fillStyle=UI.gold; cx.shadowColor=UI.gold; cx.shadowBlur=18;
+  cx.fillText('PAUSED',MX,MY-18);
+  cx.shadowBlur=0;
+  // score
+  const hN=matchHomeDef?.name??'HOME', aN=matchAwayDef?.name??'AWAY';
+  cx.font="8px 'Press Start 2P',monospace"; cx.fillStyle=UI.cream;
+  cx.fillText(`${hN}  ${score[0]} — ${score[1]}  ${aN}`,MX,MY+8);
+  // hint
+  cx.font="6px 'Press Start 2P',monospace"; cx.fillStyle=UI.textMute;
+  cx.fillText('ESC / OPTIONS  TO RESUME',MX,MY+36);
+}
+
 function loop(ts){
   requestAnimationFrame(loop);
   const dt=Math.min((ts-lastTS)/16.67,4);
   lastTS=ts;
   const inp=readInput();
   if(menuState!=='match'){drawMenu(inp);return;}
+  if(inp.pausePressed&&(phase==='play'||phase==='kickoff'||paused)){paused=!paused;}
+  if(paused){cx.save();cx.scale(SC,SC);drawPauseOverlay();cx.restore();return;}
   // Slow-motion decay
   if(slowMoTimer>0)slowMoTimer=Math.max(0,slowMoTimer-dt);
   const SM=BALANCE.slowMo;
@@ -1877,8 +1941,14 @@ function loop(ts){
     separatePlayers();
     // GK save detection — fires when GK catches a fast moving ball
     const curGK=ball.owner?.role==='gk'?ball.owner:null;
-    if(curGK&&curGK!==prevGKOwner&&Math.abs(ball.vx)+Math.abs(ball.vy)>2.5)
+    if(curGK&&curGK!==prevGKOwner&&Math.abs(ball.vx)+Math.abs(ball.vy)>2.5){
+      const gkR2=curGK.gkRating??1;
+      const saveLbl=gkR2>=3?'WORLD CLASS SAVE! 🧤':gkR2>=2?'GREAT SAVE! 🧤':'SAVED! 🧤';
+      showCallout(saveLbl,curGK.x,curGK.y-28,75);
+      const sayCel=gkR2>=3?['E HOLD AM!','LIKE A WALL!','NAIJA GK!!!']:['GK CHOKE AM!','NO WAY!!!'];
+      curGK.speechBubble={text:sayCel[Math.floor(Math.random()*sayCel.length)],t:0,maxT:160};
       triggerCommentary('save',curGK.name);
+    }
     prevGKOwner=ball.owner?.role==='gk'?ball.owner:null;
     updateParticles(physDt);
     updateRings(dt);
@@ -1941,7 +2011,6 @@ function loop(ts){
   if(slowFrac>0){cx.fillStyle=`rgba(20,0,50,${slowFrac*0.38})`;cx.fillRect(0,0,LW,LH);}
 
   drawParticles();
-  drawRings();
 
   // ghost trails
   for(const t of trails)drawPlayer(t.x,t.y,t.tc,t.frame,'run',t.dir,t.a);
@@ -1950,22 +2019,30 @@ function loop(ts){
   const all=[...home,...away].sort((a,b)=>a.y-b.y);
   for(const p of all){
     const tc=COL[p.team];
-    // controlled ring (white — shows who you're controlling)
-    if(p.controlled){
-      cx.strokeStyle='rgba(255,255,255,0.55)';cx.lineWidth=1.5;
-      cx.beginPath();cx.arc(p.x,p.y+5,PRAD+3,0,Math.PI*2);cx.stroke();
+    // Wind/speed lines behind running players
+    if(p.state==='run'){
+      cx.save();
+      cx.globalAlpha=0.18+Math.sin(Date.now()*0.048+p.x*0.1)*0.07;
+      cx.strokeStyle=p.team==='home'?'#86efac':'#fca5a5';
+      cx.lineWidth=0.8;
+      for(let i=0;i<3;i++){
+        const lx=p.x-p.dir*(7+i*4);
+        const ly=p.y-1+i*3-3;
+        cx.beginPath();cx.moveTo(lx,ly);cx.lineTo(lx-p.dir*(3+i*2),ly);cx.stroke();
+      }
+      cx.restore();
     }
     // Feint shimmer — offset x by wobble when debuffed
     const shimX=p.feinted?Math.sin(Date.now()*0.04)*BALANCE.feint.shimmerAmp:0;
     // GK gets distinct shirt + gloves via modified tc
     const drawTc=p.role==='gk'?{...tc,shirt:tc.gkShirt??tc.shirt,gloves:tc.gloves}:tc;
     drawPlayer(p.x+shimX,p.y,drawTc,p.frame,p.state,p.dir,p.feinted?0.7:1,p.role==='gk');
-
-    // ── Boss aura — pulsing gold ring on 3★ ball carrier ─────────────────────
-    if(ball.owner===p&&p.overallStars>=3){
-      const pulse=0.22+Math.sin(Date.now()*0.007)*0.14;
-      cx.strokeStyle=`rgba(253,224,71,${pulse})`;cx.lineWidth=2.5;
-      cx.beginPath();cx.arc(p.x,p.y+5,PRAD+7,0,Math.PI*2);cx.stroke();
+    // Controlled indicator — small dot above player head instead of ground ring
+    if(p.controlled){
+      const ic=p.team==='home'?'#86efac':'#fca5a5';
+      cx.fillStyle=ic; cx.globalAlpha=0.85;
+      cx.beginPath();cx.arc(p.x,p.y-28,2.5,0,Math.PI*2);cx.fill();
+      cx.globalAlpha=1;
     }
     // ── Overhead label ────────────────────────────────────────────────────────
     cx.textAlign='center';

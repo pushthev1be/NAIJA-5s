@@ -18,7 +18,7 @@ export const PITCH = {
   w: 764, h: 452,      // playable area dimensions
 
   goalHeight:  100,    // mouth height (each goal)
-  goalDepth:    22,    // how deep the net extends behind the line
+  goalDepth:    18,    // how deep the net extends behind the line
 
   penaltyBoxW: 110,
   penaltyBoxH: 170,
