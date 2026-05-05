@@ -529,12 +529,12 @@ function drawBall(x,y,z,spin){
   const ss=Math.max(0.3,1-z*0.017);
   cx.fillStyle=`rgba(0,0,0,${0.3*ss})`;
   cx.beginPath();cx.ellipse(x,y,(5+z*0.18)*ss,(2.5+z*0.07)*ss,0,0,Math.PI*2);cx.fill();
-  cx.fillStyle='#fff';cx.beginPath();cx.arc(x,by,BRAD,0,Math.PI*2);cx.fill();
+  cx.fillStyle='#FFD700';cx.beginPath();cx.arc(x,by,BRAD,0,Math.PI*2);cx.fill();
   cx.save();cx.translate(x,by);cx.rotate(spin);
-  cx.fillStyle='#333';cx.fillRect(-1,-1,2,2);
-  cx.fillStyle='#666';cx.fillRect(2,-1,1,1);cx.fillRect(-BRAD+1,0,1,1);
+  cx.fillStyle='#7a4700';cx.fillRect(-1,-1,2,2);
+  cx.fillStyle='#a86200';cx.fillRect(2,-1,1,1);cx.fillRect(-BRAD+1,0,1,1);
   cx.restore();
-  cx.fillStyle='rgba(255,255,255,0.65)';cx.fillRect(x+1,by-3,1,1);
+  cx.fillStyle='rgba(255,255,200,0.65)';cx.fillRect(x+1,by-3,1,1);
 }
 
 // ── PITCH ─────────────────────────────────────────────────────────────────────
@@ -1009,7 +1009,13 @@ function aiUpdate(players,opps,dt){
       }
       if(!didDive){
         tx=gkX;
-        ty=clamp(ball.y,MY-GH/2+GK.goalMouthInset,MY+GH/2-GK.goalMouthInset);
+        // Track ball y across full pitch when opponent has ball near touchlines in def half
+        const gkInDefHalf=isHome?ball.x<MX+80:ball.x>MX-80;
+        const ballNearTouch=ball.y<PY+PH*0.22||ball.y>PY+PH*0.78;
+        const gkWideY=gkInDefHalf&&ballNearTouch
+          ?clamp(ball.y,PY+PRAD,PY+PH-PRAD)
+          :clamp(ball.y,MY-GH/2+GK.goalMouthInset,MY+GH/2-GK.goalMouthInset);
+        ty=gkWideY;
         if(!opHas&&dst(p,{x:gkX,y:MY})>MV.aiArrivalDist)ty=p.hy;
         if(!ball.owner&&dst(p,ball)<MV.aiGKCollectRange){tx=ball.x;ty=ball.y;}
       }
@@ -1107,7 +1113,16 @@ function aiUpdate(players,opps,dt){
     } else if(opHas){
       const r=MV.aiPressRadius[p.role]??95;
       const effectiveR=r*(p.overallStars>=3?1.45:p.overallStars>=2?1.18:1)*pressBoost;
-      if(!p.feinted&&dst(p,ball)<effectiveR){
+      const isDefRole=p.role==='cb'||p.role==='lb'||p.role==='rb';
+      // Defensive half: ball is anywhere on our side of the pitch
+      const inDefHalf=isHome?ball.x<MX+50:ball.x>MX-50;
+      // Danger zone: last ~28% of pitch toward own goal — all defenders converge
+      const inDangerZone=isHome?ball.x<PX+PW*0.28:ball.x>PX+PW*0.72;
+      // Near touchline: top or bottom 20% of pitch height
+      const nearTouch=ball.y<PY+PH*0.20||ball.y>PY+PH*0.80;
+      // Trigger: defenders always press in danger zone OR near touchline in defensive half
+      const zonePress=isDefRole&&(inDangerZone||(inDefHalf&&nearTouch));
+      if(!p.feinted&&(dst(p,ball)<effectiveR||zonePress)){
         tx=ball.x;ty=ball.y;
         const stlStars=p.starLevels?.steal??1;
         reactionBoost=stlStars>=3?1.32:stlStars>=2?1.16:1.0;
@@ -1117,8 +1132,11 @@ function aiUpdate(players,opps,dt){
           activateSkill(p,'steal'); aiTackle(p);
         } else aiTackle(p);
       } else {
-        // Out of press range — hold formation position, track ball y lightly
-        tx=p.hx; ty=p.hy+(ball.y-MY)*0.10;
+        // Out of press range — defenders fully mirror ball y in their half to stay goal-side
+        tx=p.hx;
+        ty=isDefRole&&inDefHalf
+          ?clamp(ball.y,PY+PRAD,PY+PH-PRAD)
+          :p.hy+(ball.y-MY)*0.10;
         if(p.feinted){tx+=Math.random()<0.5?-8:8;}
       }
 
@@ -1179,6 +1197,7 @@ function updateBall(dt){
                     weatherMode==='snow'?-BALANCE.weather.snow.frictionMod:0;
   const bounceMod  =weatherMode==='rain'? BALANCE.weather.rain.bounceMod:
                     weatherMode==='snow'? BALANCE.weather.snow.bounceMod:0;
+  const bpx=ball.x,bpy=ball.y;
   ball.x+=ball.vx*dt; ball.y+=ball.vy*dt;
   ball.z+=ball.vz*dt; ball.vz-=BP.gravity*dt;
   ball.spin+=ball.vx*BP.spinRate*dt;
@@ -1194,13 +1213,24 @@ function updateBall(dt){
     else ball.vz=0;
   }
 
+  // Sweep goal detection: use previous-frame position to interpolate y at goal line crossing
+  if(phase==='play'){
+    if(ball.x<PX&&bpx>=PX){
+      const t=(PX-bpx)/(ball.x-bpx),cy=bpy+t*(ball.y-bpy);
+      if(cy>MY-GH/2&&cy<MY+GH/2){goalScore(1);return;}
+    }
+    if(ball.x>PX+PW&&bpx<=PX+PW){
+      const t=(PX+PW-bpx)/(ball.x-bpx),cy=bpy+t*(ball.y-bpy);
+      if(cy>MY-GH/2&&cy<MY+GH/2){goalScore(0);return;}
+    }
+  }
   const inMouth=ball.y>MY-GH/2&&ball.y<MY+GH/2;
   if(inMouth){
     if(ball.x<PX&&phase==='play'){goalScore(1);return;}
     if(ball.x>PX+PW&&phase==='play'){goalScore(0);return;}
     if(ball.x<PX-GD){ball.x=PX-GD;ball.vx=Math.abs(ball.vx)*BP.goalpostBounceCoeff;}
     if(ball.x>PX+PW+GD){ball.x=PX+PW+GD;ball.vx=-Math.abs(ball.vx)*BP.goalpostBounceCoeff;}
-    // Crossbar / post sides — bounce off top and bottom of goal mouth inside net
+    // Post collision — bounce off top/bottom of goal mouth inside net
     if(ball.x<PX||ball.x>PX+PW){
       if(ball.y<MY-GH/2+BRAD){ball.y=MY-GH/2+BRAD;ball.vy=Math.abs(ball.vy)*BP.goalpostBounceCoeff;}
       if(ball.y>MY+GH/2-BRAD){ball.y=MY+GH/2-BRAD;ball.vy=-Math.abs(ball.vy)*BP.goalpostBounceCoeff;}
