@@ -3,7 +3,7 @@
 demo link:https://naija-5s.onrender.com
 
 
-<img width="1333" height="792" alt="Image" src="https://github.com/user-attachments/assets/c438ed99-a859-4579-956d-27827b6fc7f7" />
+<img width="755" height="696" alt="Image" src="https://github.com/user-attachments/assets/93e96c35-c4c3-4fc1-81da-0358f7f36266" />
 
 
 A fast-paced, arcade-style 5v5 soccer simulation built in pure HTML5 and JavaScript! **Naija 5s** brings high-energy gameplay, dynamic mechanics, and thrilling special abilities right to your browser. 
