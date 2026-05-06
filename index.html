@@ -482,6 +482,8 @@ function drawPlayer(x,y,tc,frame,state,dir,alpha,tall=false){
     cx.globalAlpha=1;return;
   }
 
+
+
   if(state==='kick'){
     for(let ry=bodyTop;ry<=0;ry++){dot(x,y,0,ry,tc.shirt);dot(x,y,-d,ry,tc.shirt);}
     dot(x,y,0,1,tc.shorts);
@@ -1082,8 +1084,12 @@ function aiUpdate(players,opps,dt){
           aiShoot(p,goalX,PS.velocity*velMult);
           if (psStars >= 3 && Math.random() < 0.6) {
               ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
+              ball.bypassesKeeper = true;
               showCallout('FIREBALL! 🔥', p.x, p.y-28);
-          } else ball.onFire = false;
+          } else {
+              ball.onFire = false;
+              ball.bypassesKeeper = false;
+          }
         } else if(!isDef||deficit>=3){
           if(isAtk&&Math.random()<0.9)aiStrikerShoot(p,goalX);
           else aiShoot(p,goalX,AI.normalVelocity+Math.random()*AI.normalVariance);
@@ -1100,10 +1106,14 @@ function aiUpdate(players,opps,dt){
             const psStars=p.starLevels?.powerShot??1;
             const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
             aiShoot(p,goalX,PS.velocity*velMult);
-            if (psStars >= 3 && Math.random() < 0.6) {
-                ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
-                showCallout('FIREBALL! 🔥', p.x, p.y-28);
-            } else ball.onFire = false;
+          if (psStars >= 3 && Math.random() < 0.6) {
+              ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
+              ball.bypassesKeeper = true;
+              showCallout('FIREBALL! 🔥', p.x, p.y-28);
+          } else {
+              ball.onFire = false;
+              ball.bypassesKeeper = false;
+          }
           } else if(canSkill(p,'longShot')&&dg<LS.maxRange*starRange&&dg>LS.minRange&&Math.random()<LS.activateChance*starSkill*comebackMult*dt){
             activateSkill(p,'longShot');
             const lsStars=p.starLevels?.longShot??1;
@@ -1219,7 +1229,19 @@ function aiUpdate(players,opps,dt){
     const isGK = p.role === 'gk';
     const pickupR = isGK && p.diving ? 28 : (isGK ? 18 : PRAD+BRAD+PHYSICS.ball.pickupRadius);
     const maxZ = isGK ? 30 : PHYSICS.ball.maxPickupZ;
-    if(!ball.owner&&p.kickCD<=0&&dst(p,ball)<pickupR&&ball.z<maxZ&&!ball.onFire){
+
+    let canCatch = !ball.bypassesKeeper;
+    if(ball.bypassesKeeper && isGK && lastKicker) {
+        const gkStars = p.gkRating ?? p.overallStars ?? 1;
+        const kickerStars = lastKicker.overallStars ?? 1;
+        if(gkStars > kickerStars && Math.random() < 0.5) {
+            canCatch = true;
+            ball.bypassesKeeper = false;
+            showCallout('CLUTCH SAVE! 🧤', p.x, p.y-28);
+        }
+    }
+
+    if(!ball.owner&&p.kickCD<=0&&dst(p,ball)<pickupR&&ball.z<maxZ&&canCatch){
         ball.owner=p;
         if(isGK) {
             p.diving=false; p.state='idle';
@@ -1262,6 +1284,13 @@ function updateBall(dt){
     return;
   }
   if(ball.onFire && Math.random() < 0.8) spawnSparks(ball.x, ball.y, 'orange', 1);
+  if(ball.isCurveShot && Math.random() < 0.9) spawnSparks(ball.x, ball.y, '#3b82f6', 2);
+  
+  if(ball.isCurveShot) {
+      ball.vy += ball.curveForce * dt;
+      ball.curveForce *= Math.pow(0.96, dt); // fade out curve force
+  }
+
   const BP=PHYSICS.ball;
   // Weather mods
   if(weatherMode==='wind'){ball.vx+=windX*dt;ball.vy+=windY*dt;}
@@ -1381,12 +1410,12 @@ function updateControlled(p,inp,dt,cs=ctrl1){
   for(const s in p.skillCDs)p.skillCDs[s]=Math.max(0,p.skillCDs[s]-dt);
   if(p.skillT>0){p.skillT-=dt;}else if(p.activeSkill){p.activeSkill=null;}
 
+  const moving=Math.hypot(inp.dx,inp.dy)>0.1;
   const spd=(inp.sprint?SPRINTSPD:WALK)*fatigueMult;
   p.x+=inp.dx*spd*dt; p.y+=inp.dy*spd*dt;
   p.x=clamp(p.x,PX+PRAD,PX+PW-PRAD);
   p.y=clamp(p.y,PY+PRAD,PY+PH-PRAD);
 
-  const moving=Math.hypot(inp.dx,inp.dy)>0.1;
   if(moving&&Math.abs(inp.dx)>0.15){
     const nd=inp.dx>0?1:-1;
     if(nd!==cs.lastDir&&ball.owner===p){
@@ -1434,8 +1463,16 @@ function updateControlled(p,inp,dt,cs=ctrl1){
   }
   if(cs.kickState==='charging'){
     if(inp.kickHeld){
-      const maxCharge = p.starLevels?.powerShot >= 3 ? 1.5 : 1.0;
-      cs.kickCharge=Math.min(maxCharge,cs.kickCharge+dt/CH.chargeTime);
+      const maxCharge = p.overallStars >= 3 ? 1.5 : 1.0;
+      if (!cs.chargeDir) cs.chargeDir = 1;
+      cs.kickCharge += cs.chargeDir * (dt / (CH.chargeTime * 0.7)); // Faster oscillation
+      if(cs.kickCharge >= maxCharge) {
+          cs.kickCharge = maxCharge;
+          cs.chargeDir = -1;
+      } else if (cs.kickCharge <= 0) {
+          cs.kickCharge = 0;
+          cs.chargeDir = 1;
+      }
     } else {
       // Release — fire!
       const power=cs.kickCharge;
@@ -1449,29 +1486,45 @@ function updateControlled(p,inp,dt,cs=ctrl1){
         const scatter=(Math.random()-0.5)*lerp(CH.minScatter,CH.maxScatter,power);
         [bx,by]=nrm(goalX-p.x,MY-p.y+scatter);
       }
-      const isPowerShot=power>=CH.powerShotThreshold&&canSkill(p,'powerShot');
-      if(isPowerShot){
-        activateSkill(p,'powerShot');
+      const is3Star = p.overallStars >= 3;
+      const staminaEffectiveness = Math.max(0.6, p.stamina / 100);
+
+      if(power > 1.0 && is3Star){
+        if (canSkill(p, 'powerShot')) activateSkill(p,'powerShot');
         const PS=SKILLS.powerShot;
-        const psStars=p.starLevels?.powerShot??1;
-        const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
-        ball.vx=bx*PS.velocity*velMult; ball.vy=by*PS.velocity*velMult;
+        const vel = 1.35 * staminaEffectiveness;
+        ball.vx=bx*PS.velocity * vel; ball.vy=by*PS.velocity * vel;
         ball.z=4.5; ball.vz=1.8;
-        if(power > 1.2 && psStars >= 3) {
-            ball.onFire = true;
-            ball.vx *= 1.35; ball.vy *= 1.35;
-            showCallout('FIREBALL! 🔥', p.x, p.y-28);
-        } else ball.onFire = false;
+        ball.onFire = true;
+        ball.isCurveShot = false;
+        ball.bypassesKeeper = true;
+        p.stamina = Math.max(0, p.stamina - 35);
+        showCallout('FIREBALL! 🔥', p.x, p.y-28);
+      } else if(power >= 0.5) {
+        ball.onFire = false;
+        ball.isCurveShot = true;
+        ball.bypassesKeeper = Math.random() < (0.6 * staminaEffectiveness);
+        const vel = 1.5 * staminaEffectiveness;
+        const v=lerp(CH.minVelocity,CH.maxVelocity,power) * vel;
+        ball.vx=bx*v; ball.vy=by*v;
+        ball.z=2; ball.vz=1.2;
+        const gy = MY - p.y;
+        ball.curveForce = Math.sign(gy) * 0.55 * staminaEffectiveness; 
+        p.stamina = Math.max(0, p.stamina - 15);
+        showCallout('CURVE SHOT! 🌀', p.x, p.y-28);
       } else {
         ball.onFire = false;
-        const v=lerp(CH.minVelocity,CH.maxVelocity,power);
+        ball.isCurveShot = false;
+        ball.bypassesKeeper = false;
+        const vel = Math.max(0.8, staminaEffectiveness);
+        const v=lerp(CH.minVelocity,CH.maxVelocity,power) * vel;
         ball.vx=bx*v; ball.vy=by*v;
         ball.z=lerp(CH.minZ,CH.maxZ,power);
         ball.vz=lerp(CH.minLift,CH.maxLift,power);
       }
       p.kickCD=CH.kickCooldown; p.state='kick';
       spawnSparks(p.x+p.dir*8,p.y,'kick',Math.floor(power*12)+4);
-      if(isPowerShot){/* animation already handled by activateSkill */}
+      if(power > 1.0 && is3Star){/* animation handled */}
       else if(power>=CH.boomThreshold){showCallout('BOOM! 🔥',p.x,p.y-28);rumbleBoom();}
       else if(power>=CH.niceThreshold){showCallout('NICE SHOT!',p.x,p.y-26);rumbleNiceShot();}
       else rumbleTap();
@@ -1513,7 +1566,7 @@ function updateControlled(p,inp,dt,cs=ctrl1){
     }
   }
 
-  // Slide tackle
+  // Tackle
   if(inp.tacklePressed&&p.tackleCD<=0){
     const carrier=ball.owner;
     if(carrier&&carrier.team!==p.team&&dst(p,carrier)<PRAD*TK.rangeMultiplier){
@@ -2256,14 +2309,19 @@ function loop(ts){
     drawArc(home[ctrlIdx],inp,ctrl1);
     const bw=28,bh=4,bx2=home[ctrlIdx].x-bw/2,by2=home[ctrlIdx].y-24;
     cx.fillStyle='rgba(0,0,0,0.55)';cx.fillRect(bx2-1,by2-1,bw+2,bh+2);
-    const isUltra = ctrl1.kickCharge > 1;
-    cx.fillStyle=isUltra?'#8b5cf6':ctrl1.kickCharge>0.7?'#ef4444':ctrl1.kickCharge>0.4?'#fb923c':'#fde047';
-    cx.fillRect(bx2,by2,bw*Math.min(1,ctrl1.kickCharge),bh);
-    if(ctrl1.kickCharge>=1){
-      cx.globalAlpha=0.3+Math.sin(Date.now()*0.02)*0.3;
-      cx.fillStyle=isUltra?'#8b5cf6':'#ef4444';cx.fillRect(bx2-2,by2-2,bw+4,bh+4);
-      cx.globalAlpha=1;
+    
+    const maxCharge = home[ctrlIdx].overallStars >= 3 ? 1.5 : 1.0;
+    
+    // Zones
+    cx.fillStyle = '#fde047'; cx.fillRect(bx2, by2, bw * (0.5 / maxCharge), bh);
+    cx.fillStyle = '#3b82f6'; cx.fillRect(bx2 + bw * (0.5 / maxCharge), by2, bw * (0.5 / maxCharge), bh);
+    if (maxCharge > 1.0) {
+        cx.fillStyle = '#f97316'; cx.fillRect(bx2 + bw * (1.0 / maxCharge), by2, bw * (0.5 / maxCharge), bh);
     }
+    
+    // Moving Cursor
+    const cursorX = bx2 + bw * (ctrl1.kickCharge / maxCharge);
+    cx.fillStyle = '#ffffff'; cx.fillRect(cursorX - 1, by2 - 1, 2, bh + 2);
   }
   // Trajectory arc and charge bar — P2
   if(p2Mode&&ctrl2.kickState==='charging'){
@@ -2271,14 +2329,17 @@ function loop(ts){
     drawArc(away[ctrlIdx2],inp2Last,ctrl2);
     const bw=28,bh=4,bx2=away[ctrlIdx2].x-bw/2,by2=away[ctrlIdx2].y-24;
     cx.fillStyle='rgba(0,0,0,0.55)';cx.fillRect(bx2-1,by2-1,bw+2,bh+2);
-    const isUltra = ctrl2.kickCharge > 1;
-    cx.fillStyle=isUltra?'#8b5cf6':ctrl2.kickCharge>0.7?'#ef4444':ctrl2.kickCharge>0.4?'#fb923c':'#fde047';
-    cx.fillRect(bx2,by2,bw*Math.min(1,ctrl2.kickCharge),bh);
-    if(ctrl2.kickCharge>=1){
-      cx.globalAlpha=0.3+Math.sin(Date.now()*0.02)*0.3;
-      cx.fillStyle=isUltra?'#8b5cf6':'#ef4444';cx.fillRect(bx2-2,by2-2,bw+4,bh+4);
-      cx.globalAlpha=1;
+    
+    const maxCharge = away[ctrlIdx2].overallStars >= 3 ? 1.5 : 1.0;
+    
+    cx.fillStyle = '#fde047'; cx.fillRect(bx2, by2, bw * (0.5 / maxCharge), bh);
+    cx.fillStyle = '#3b82f6'; cx.fillRect(bx2 + bw * (0.5 / maxCharge), by2, bw * (0.5 / maxCharge), bh);
+    if (maxCharge > 1.0) {
+        cx.fillStyle = '#f97316'; cx.fillRect(bx2 + bw * (1.0 / maxCharge), by2, bw * (0.5 / maxCharge), bh);
     }
+    
+    const cursorX = bx2 + bw * (ctrl2.kickCharge / maxCharge);
+    cx.fillStyle = '#ffffff'; cx.fillRect(cursorX - 1, by2 - 1, 2, bh + 2);
   }
 
   drawCallouts();
