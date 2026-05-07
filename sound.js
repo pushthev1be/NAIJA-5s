@@ -46,7 +46,7 @@ function noise(dur, vol, filterFreq = 1200, q = 1.2, t0) {
 }
 
 // ── RETRO MUSIC ───────────────────────────────────────────────────────────────
-const retroAudio = new Audio(import.meta.env.BASE_URL + 'retro.mp3');
+const retroAudio = new Audio(new URL('./retro.mp3', import.meta.url).href);
 retroAudio.loop = true;
 retroAudio.volume = 0.52;
 let _retroFadeTimer = null;
