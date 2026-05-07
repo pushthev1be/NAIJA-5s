@@ -46,17 +46,21 @@ function noise(dur, vol, filterFreq = 1200, q = 1.2, t0) {
 }
 
 // ── RETRO MUSIC ───────────────────────────────────────────────────────────────
-const retroAudio = new Audio('./retro.mp3');
+const retroAudio = new Audio('/retro.mp3');
 retroAudio.loop = true;
 retroAudio.volume = 0.52;
 let _retroFadeTimer = null;
+let _retroUnlocked = false;
 
-// Try to autoplay immediately; if blocked, retry on any user gesture
-retroAudio.play().catch(() => {});
-const _tryStart = () => { retroAudio.play().catch(() => {}); };
-document.addEventListener('click',       _tryStart, { once: true });
-document.addEventListener('keydown',     _tryStart, { once: true });
-document.addEventListener('pointerdown', _tryStart, { once: true });
+// Start music on first user gesture (browser autoplay policy)
+const _tryStart = () => {
+  if (_retroUnlocked) return;
+  _retroUnlocked = true;
+  retroAudio.play().catch(() => {});
+};
+document.addEventListener('click',       _tryStart);
+document.addEventListener('keydown',     _tryStart);
+document.addEventListener('pointerdown', _tryStart);
 
 export function playRetroMusic() {
   if (_retroFadeTimer) { clearInterval(_retroFadeTimer); _retroFadeTimer = null; }
