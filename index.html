@@ -17,6 +17,7 @@ html,body{width:100%;height:100%;background:#050A05;overflow:hidden;display:flex
 <script type="module">
 import { CANVAS, PITCH, PHYSICS, RULES, MOVEMENT, POWER, SKILLS, TEAMS, ALL_TEAMS, UI, BALANCE } from './game.config.js';
 import { initDevPanel, logCpuMatch } from './dev-panel.js';
+import { unlockAudio, sndBallHit, sndBoom, sndNiceShot, sndTap, sndGoal, sndNetBoom, startCrowd, tickCrowd, stopRetroMusic, playRetroMusic, sndWhistle } from './sound.js';
 
 // ── CANVAS ────────────────────────────────────────────────────────────────────
 const cv=document.getElementById('g'), cx=cv.getContext('2d');
@@ -52,6 +53,7 @@ function updateCOL(hDef,aDef){COL.home=hDef.colors;COL.away=aDef.colors;}
 const K={};
 addEventListener('keydown',e=>{
   K[e.code]=true;
+  unlockAudio();
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab','KeyC'].includes(e.code))
     e.preventDefault();
   // Auto-activate P2 on first IJKL keypress
@@ -141,6 +143,7 @@ const rumbleSprint    = () => rumble(...R.sprintBuzz);
 const rumbleCpuSkill  = () => rumble(...R.cpuSkill);
 let gpName='', gpName2='';
 addEventListener('gamepadconnected',   e=>{
+  unlockAudio();
   const pads=navigator.getGamepads?.()??[];
   let p1Set=false;
   for(const g of pads){if(!g)continue;if(!p1Set){gpName=g.id.slice(0,40);p1Set=true;}else{gpName2=g.id.slice(0,40);p2Mode=true;break;}}
@@ -670,6 +673,7 @@ const COMMENTARY_KEY=typeof import.meta!=='undefined'?(import.meta.env?.VITE_GEM
 let commentary=null;         // {text, t, maxT}
 let commentaryCooldown=0;    // frames before next call allowed
 let lastKicker=null;         // last player to shoot — for goal attribution
+let lastShotPower=false;     // true when last shot was a power shot
 let prevGKOwner=null;        // track GK ball-ownership transitions (save detection)
 
 const CMTRY_FALLBACK={
@@ -999,14 +1003,16 @@ function aiUpdate(players,opps,dt){
     if(p.role==='gk'){
       // ── GK DIVE SAVE (scaled by gkRating) ─────────────────────────────────
       const gkDiveThresh=GK.diveSpeedThresh*(gkR>=3?0.52:gkR>=2?0.74:1.0);
-      const gkReactWindow=gkR>=3?72:gkR>=2?60:46;
+      // Distance-based react window: GK responds at same spatial range regardless of ball speed
+      const gkReactDist=gkR>=3?PW*0.82:gkR>=2?PW*0.62:PW*0.48;
       p.diving=false;
       const ballFast=!ball.owner&&Math.abs(ball.vx)>gkDiveThresh;
       const headingIn=isHome?(ball.vx<0):(ball.vx>0);
       let didDive=false;
       if(ballFast&&headingIn&&ball.z<GK.goalMouthInset+18){
-        const tFrames=(gkX-ball.x)/ball.vx;
-        if(tFrames>0&&tFrames<gkReactWindow){
+        const distToLine=Math.abs(gkX-ball.x);
+        if(distToLine>0&&distToLine<gkReactDist){
+          const tFrames=distToLine/Math.abs(ball.vx);
           const predY=ball.y+ball.vy*tFrames;
           const clampedY=clamp(predY,MY-GH/2+GK.goalMouthInset,MY+GH/2-GK.goalMouthInset);
           tx=gkX; ty=clampedY;
@@ -1021,12 +1027,12 @@ function aiUpdate(players,opps,dt){
       }
       if(!didDive){
         const distToGoalX = Math.abs(ball.x - gkX);
-        
+
         // Step out to cut angles when ball gets close, but never step out past the ball
         let stepOut = 0;
         if (distToGoalX < 140) {
            stepOut = 25 * (1 - distToGoalX / 140);
-           stepOut = Math.min(stepOut, distToGoalX * 0.75); 
+           stepOut = Math.min(stepOut, distToGoalX * 0.75);
         }
         tx = isHome ? gkX + stepOut : gkX - stepOut;
 
@@ -1082,6 +1088,7 @@ function aiUpdate(players,opps,dt){
           const psStars=p.starLevels?.powerShot??1;
           const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
           aiShoot(p,goalX,PS.velocity*velMult);
+          lastShotPower=true;
           if (psStars >= 3 && Math.random() < 0.6) {
               ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
               ball.bypassesKeeper = true;
@@ -1091,6 +1098,7 @@ function aiUpdate(players,opps,dt){
               ball.bypassesKeeper = false;
           }
         } else if(!isDef||deficit>=3){
+          lastShotPower=false;
           if(isAtk&&Math.random()<0.9)aiStrikerShoot(p,goalX);
           else aiShoot(p,goalX,AI.normalVelocity+Math.random()*AI.normalVariance);
         } else {
@@ -1106,20 +1114,23 @@ function aiUpdate(players,opps,dt){
             const psStars=p.starLevels?.powerShot??1;
             const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
             aiShoot(p,goalX,PS.velocity*velMult);
-          if (psStars >= 3 && Math.random() < 0.6) {
-              ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
-              ball.bypassesKeeper = true;
-              showCallout('FIREBALL! 🔥', p.x, p.y-28);
-          } else {
-              ball.onFire = false;
-              ball.bypassesKeeper = false;
-          }
+            lastShotPower=true;
+            if (psStars >= 3 && Math.random() < 0.6) {
+                ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
+                ball.bypassesKeeper = true;
+                showCallout('FIREBALL! 🔥', p.x, p.y-28);
+            } else {
+                ball.onFire = false;
+                ball.bypassesKeeper = false;
+            }
           } else if(canSkill(p,'longShot')&&dg<LS.maxRange*starRange&&dg>LS.minRange&&Math.random()<LS.activateChance*starSkill*comebackMult*dt){
+            lastShotPower=false;
             activateSkill(p,'longShot');
             const lsStars=p.starLevels?.longShot??1;
             const velMult=lsStars>=3?1.0:lsStars>=2?0.5:0.3;
             aiShoot(p,goalX,LS.velocity*velMult);
           } else if(dg<PS.goalRange*starRange&&Math.random()<AI.normalShootChance*shootMult*(p.ego>=3?1.28:1)*starSkill*comebackMult*dt){
+            lastShotPower=false;
             if(isAtk&&Math.random()<0.9)aiStrikerShoot(p,goalX);
             else aiShoot(p,goalX,AI.normalVelocity+Math.random()*AI.normalVariance);
           }
@@ -1160,34 +1171,33 @@ function aiUpdate(players,opps,dt){
       const r=MV.aiPressRadius[p.role]??95;
       const effectiveR=r*(p.overallStars>=3?1.45:p.overallStars>=2?1.18:1)*pressBoost;
       const isDefRole=p.role==='cb'||p.role==='lb'||p.role==='rb';
+      const stlStars=p.starLevels?.steal??1;
       // Defensive half: ball is anywhere on our side of the pitch
       const inDefHalf=isHome?ball.x<MX+50:ball.x>MX-50;
       // Danger zone: last ~28% of pitch toward own goal — all defenders converge
       const inDangerZone=isHome?ball.x<PX+PW*0.28:ball.x>PX+PW*0.72;
       // Near touchline: top or bottom 20% of pitch height
       const nearTouch=ball.y<PY+PH*0.20||ball.y>PY+PH*0.80;
-      
       const defs = players.filter(m=>m.role==='cb'||m.role==='lb'||m.role==='rb');
       const closestDef = defs.length ? defs.reduce((a,b)=>dst(a,ball)<dst(b,ball)?a:b) : null;
       const isClosestDef = p === closestDef;
 
-      // Trigger: closest defender presses in danger zone OR near touchline in defensive half
-      const zonePress=isDefRole&&isClosestDef&&(inDangerZone||(inDefHalf&&nearTouch));
-      
-      // Proximity override: If ball is very close, or if a fullback has the ball between them and the touchline
+      // Proximity override: fullback has ball between them and the touchline
       let touchlineProximity = false;
       if (p.role === 'lb' && ball.y < p.y) touchlineProximity = true;
       if (p.role === 'rb' && ball.y > p.y) touchlineProximity = true;
 
       const proximityOverride = isDefRole && (dst(p,ball) < PRAD * 8 || (touchlineProximity && dst(p,ball) < effectiveR * 1.5));
       const canPress = (!isDefRole && dst(p,ball)<effectiveR) || (isDefRole && isClosestDef && dst(p,ball)<effectiveR) || proximityOverride;
-      
+
+      // 3-star steal CB presses anywhere on the pitch (100% aggressive)
+      const zonePress=isDefRole&&(inDangerZone||(inDefHalf&&nearTouch)||(stlStars>=3&&isClosestDef));
+
       if(!p.feinted&&(canPress||zonePress)){
         tx=ball.x;ty=ball.y;
-        const stlStars=p.starLevels?.steal??1;
-        reactionBoost=stlStars>=3?1.32:stlStars>=2?1.16:1.0;
+        reactionBoost=stlStars>=3?1.68:stlStars>=2?1.16:1.0;
         if(canSkill(p,'speedBoost')&&dst(p,ball)<SB.defendActivateRange&&Math.random()<SB.defendActivateChance*dt)activateSkill(p,'speedBoost');
-        const stlRange=STL.tackleRange*(0.7+0.18*stlStars);
+        const stlRange=STL.tackleRange*(stlStars>=3?1.85:0.7+0.18*stlStars);
         if(canSkill(p,'steal')&&ball.owner&&dst(p,ball.owner)<stlRange&&p.tackleCD<=0){
           activateSkill(p,'steal'); aiTackle(p);
         } else aiTackle(p);
@@ -1337,8 +1347,8 @@ function updateBall(dt){
       if(ball.y>MY+GH/2-BRAD){ball.y=MY+GH/2-BRAD;ball.vy=-Math.abs(ball.vy)*BP.goalpostBounceCoeff;}
     }
   } else {
-    if(ball.x<PX+BRAD){ball.x=PX+BRAD;ball.vx=Math.abs(ball.vx)*BP.wallBounceCoeff;spawnBounce(ball.x,ball.y,2);rumbleWall();}
-    if(ball.x>PX+PW-BRAD){ball.x=PX+PW-BRAD;ball.vx=-Math.abs(ball.vx)*BP.wallBounceCoeff;spawnBounce(ball.x,ball.y,2);rumbleWall();}
+    if(ball.x<PX+BRAD){ball.x=PX+BRAD;ball.vx=Math.abs(ball.vx)*BP.wallBounceCoeff;spawnBounce(ball.x,ball.y,2);rumbleWall();sndBallHit(Math.hypot(ball.vx,ball.vy));}
+    if(ball.x>PX+PW-BRAD){ball.x=PX+PW-BRAD;ball.vx=-Math.abs(ball.vx)*BP.wallBounceCoeff;spawnBounce(ball.x,ball.y,2);rumbleWall();sndBallHit(Math.hypot(ball.vx,ball.vy));}
     // Near-miss detection: fast ball just passed a goal line at post height
     if(phase==='play'){
       const NM=BALANCE.goalProximity.nearMissRange;
@@ -1352,14 +1362,14 @@ function updateBall(dt){
     }
   }
   if(ball.y<PY+BRAD){
-    ball.y=PY+BRAD;ball.vy=Math.abs(ball.vy)*BP.wallBounceCoeff;spawnBounce(ball.x,ball.y,2);rumbleWall();
+    ball.y=PY+BRAD;ball.vy=Math.abs(ball.vy)*BP.wallBounceCoeff;spawnBounce(ball.x,ball.y,2);rumbleWall();sndBallHit(Math.hypot(ball.vx,ball.vy));
     // Wide shot: high-speed hit near goal line = mini explosion
     if((ball.x<PX+50||ball.x>PX+PW-50)&&Math.hypot(ball.vx,ball.vy)>2.8){
       spawnSparks(ball.x,ball.y,'orange',11);spawnRing(ball.x,ball.y,'#fb923c',26,2.5);
     }
   }
   if(ball.y>PY+PH-BRAD){
-    ball.y=PY+PH-BRAD;ball.vy=-Math.abs(ball.vy)*BP.wallBounceCoeff;spawnBounce(ball.x,ball.y,2);rumbleWall();
+    ball.y=PY+PH-BRAD;ball.vy=-Math.abs(ball.vy)*BP.wallBounceCoeff;spawnBounce(ball.x,ball.y,2);rumbleWall();sndBallHit(Math.hypot(ball.vx,ball.vy));
     if((ball.x<PX+50||ball.x>PX+PW-50)&&Math.hypot(ball.vx,ball.vy)>2.8){
       spawnSparks(ball.x,ball.y,'orange',11);spawnRing(ball.x,ball.y,'#fb923c',26,2.5);
     }
@@ -1374,6 +1384,8 @@ function goalScore(team){
   showCallout(team===0?'NAIJA GOAL! 🔥':'AWAY GOAL!',MX,MY-38,100);
   spawnSparks(MX,MY,'kick',22);
   rumbleGoal();
+  if(lastShotPower) sndNetBoom(); else sndGoal();
+  lastShotPower=false;
   assignGoalBubbles(team===0?'home':'away');
   // Scorer celebration emote — override generic win bubble
   if(lastKicker){
@@ -1524,10 +1536,11 @@ function updateControlled(p,inp,dt,cs=ctrl1){
       }
       p.kickCD=CH.kickCooldown; p.state='kick';
       spawnSparks(p.x+p.dir*8,p.y,'kick',Math.floor(power*12)+4);
-      if(power > 1.0 && is3Star){/* animation handled */}
-      else if(power>=CH.boomThreshold){showCallout('BOOM! 🔥',p.x,p.y-28);rumbleBoom();}
-      else if(power>=CH.niceThreshold){showCallout('NICE SHOT!',p.x,p.y-26);rumbleNiceShot();}
-      else rumbleTap();
+      lastShotPower=(power > 1.0 && is3Star);
+      if(power > 1.0 && is3Star){sndBoom();}
+      else if(power>=CH.boomThreshold){showCallout('BOOM! 🔥',p.x,p.y-28);rumbleBoom();sndBoom();}
+      else if(power>=CH.niceThreshold){showCallout('NICE SHOT!',p.x,p.y-26);rumbleNiceShot();sndNiceShot();}
+      else{rumbleTap();sndTap();}
       if(devStats)devStats.shots[p.team==='home'?0:1]++;
       cs.kickState='idle';cs.kickCharge=0;
     }
@@ -1748,6 +1761,7 @@ function startMatchFromMenu(){
   p2Mode=(gameMode==='pvp');
   menuState='match';
   initMatch(matchHomeDef,matchAwayDef);
+  startCrowd();
   devStats={possession:[0,0],shots:[0,0],startTime:Date.now()};
 }
 function startLeagueFixture(){
@@ -1762,6 +1776,7 @@ function startLeagueFixture(){
   matchAwayDef=ALL_TEAMS[leagueState.playerIsHome?opp:pi];
   p2Mode=false; menuState='match';
   initMatch(matchHomeDef,matchAwayDef);
+  startCrowd();
   devStats={possession:[0,0],shots:[0,0],startTime:Date.now()};
 }
 function handleMatchEnd(){
@@ -2052,7 +2067,10 @@ function loop(ts){
   lastTS=ts;
   const inp=readInput();
   if(menuState!=='match'){drawMenu(inp);return;}
-  if(inp.pausePressed&&(phase==='play'||phase==='kickoff'||paused)){paused=!paused;}
+  if(inp.pausePressed&&(phase==='play'||phase==='kickoff'||paused)){
+    paused=!paused;
+    if(paused) playRetroMusic(); else stopRetroMusic();
+  }
   if(paused){
       if(inp.quitPressed) { paused=false; handleMatchEnd(); return; }
       cx.save();cx.scale(SC,SC);drawPauseOverlay();cx.restore();return;
@@ -2070,6 +2088,7 @@ function loop(ts){
   for(const t of trails)t.a-=BALANCE.trail.decayRate*dt;
   trails.splice(0,trails.length,...trails.filter(t=>t.a>0));
 
+  tickCrowd(ball.x,PX,PW,phase);
   updateWeather(dt);
   // Tick speech bubbles
   if(ball.onFire && !ball.owner) {
@@ -2082,7 +2101,7 @@ function loop(ts){
   if(phase==='kickoff'){
     if(cpuTestMode){
       // CPU kicks off immediately
-      if(Math.random()<0.012*dt){phase='play';ball.vx=(koTeam===0?1:-1)*2.5;ball.vy=(Math.random()-0.5)*0.5;ball.owner=null;}
+      if(Math.random()<0.012*dt){phase='play';ball.vx=(koTeam===0?1:-1)*2.5;ball.vy=(Math.random()-0.5)*0.5;ball.owner=null;stopRetroMusic();sndWhistle();}
       aiUpdate(home,away,dt); aiUpdate(away,home,dt);
     } else {
       koTimer+=dt;
@@ -2093,7 +2112,7 @@ function loop(ts){
           const[bx,by]=nrm(koPartner.x-koHolder.x,koPartner.y-koHolder.y);
           ball.vx=bx*4.0;ball.vy=by*4.0;ball.owner=null;koPassDone=true;
         }
-        if(Math.hypot(ball.vx,ball.vy)>0.5)phase='play';
+        if(Math.hypot(ball.vx,ball.vy)>0.5){phase='play';stopRetroMusic();sndWhistle();}
       } else {
         // Away kickoff: P2 controls if p2Mode, otherwise auto-pass
         if(p2Mode){
@@ -2109,7 +2128,7 @@ function loop(ts){
             ball.vx=bx*4.0;ball.vy=by*4.0;ball.owner=null;koPassDone=true;
           }
         }
-        if(!ball.owner&&Math.hypot(ball.vx,ball.vy)>0.5)phase='play';
+        if(!ball.owner&&Math.hypot(ball.vx,ball.vy)>0.5){phase='play';stopRetroMusic();sndWhistle();}
       }
     }
     updateBall(dt);updateParticles(dt);updateRings(dt);

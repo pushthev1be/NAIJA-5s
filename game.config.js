@@ -341,7 +341,7 @@ export const ALL_TEAMS = [
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:2,name:'Amara'  },
       {role:'lb', rx:-0.70,ry:-0.42,skills:[['speedBoost',1],['steal',1]],            name:'Emeka'  },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',1]],                             name:'Chukwu' },
+      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Chukwu' },
       {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Nnamdi' },
       {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Uche'   },
       {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Iffy'   },
@@ -358,7 +358,7 @@ export const ALL_TEAMS = [
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:3,name:'Chisom' },
       {role:'lb', rx:-0.70,ry:-0.42,skills:[['speedBoost',1],['steal',1]],            name:'Oghe'   },
       {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',1]],                             name:'Ike'    },
-      {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Obi'    },
+      {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',3],['speedBoost',1]],             name:'Obi'    },
       {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Chidi'  },
       {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Augie'  },
       {role:'cm', rx:-0.16,ry: 0.00,skills:[['powerShot',3],['steal',1]],             name:'Alex'   },
@@ -373,7 +373,7 @@ export const ALL_TEAMS = [
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:3,name:'Emmanuel'},
       {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Badmus'  },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',1]],                             name:'Razak'   },
+      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Razak'   },
       {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Babatunde'},
       {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Dauda'   },
       {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Kareem'  },
@@ -389,7 +389,7 @@ export const ALL_TEAMS = [
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:1,name:'Tanko'  },
       {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Yakubu' },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',1]],                             name:'Hassan' },
+      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Hassan' },
       {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Mohammed'},
       {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Salihu' },
       {role:'lcm',rx:-0.24,ry:-0.26,skills:[['steal',1]],                             name:'Garba'  },
@@ -405,7 +405,7 @@ export const ALL_TEAMS = [
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:3,name:'Aliyu'  },
       {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Haruna' },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',1]],                             name:'Lawal'  },
+      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Lawal'  },
       {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Surajo' },
       {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Kabiru' },
       {role:'lcm',rx:-0.24,ry:-0.26,skills:[['steal',1]],                             name:'Maikano'},
@@ -421,7 +421,7 @@ export const ALL_TEAMS = [
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:1,name:'Ngozi'    },
       {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Tamuno'   },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3]],                             name:'Chukwuka' },
+      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Chukwuka' },
       {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Soberekon'},
       {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Opuene'   },
       {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Briggs'   },
@@ -437,7 +437,7 @@ export const ALL_TEAMS = [
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:1,name:'Eze'      },
       {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Ugwu'     },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',1]],                             name:'Okafor'   },
+      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Okafor'   },
       {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Onuoha'   },
       {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Nwachukwu'},
       {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Ugochukwu'},
