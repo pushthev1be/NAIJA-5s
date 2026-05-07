@@ -1082,10 +1082,11 @@ function aiUpdate(players,opps,dt){
       const nearBox=isHome
         ?(p.x>PX+PW-PBW-boxPad&&Math.abs(p.y-MY)<PBH/2+boxPad*0.6)
         :(p.x<PX+PBW+boxPad&&Math.abs(p.y-MY)<PBH/2+boxPad*0.6);
+      const psStars=p.starLevels?.powerShot??0;
+      const psThresh=psStars>=3&&isAtk?0.90:PS.activateChance*starSkill*comebackMult*dt;
       if(nearBox&&p.kickCD<=0){
-        if(canSkill(p,'powerShot')&&Math.random()<PS.activateChance*starSkill*comebackMult*dt){
+        if(canSkill(p,'powerShot')&&Math.random()<psThresh){
           activateSkill(p,'powerShot');
-          const psStars=p.starLevels?.powerShot??1;
           const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
           aiShoot(p,goalX,PS.velocity*velMult);
           lastShotPower=true;
@@ -1097,11 +1098,11 @@ function aiUpdate(players,opps,dt){
               ball.onFire = false;
               ball.bypassesKeeper = false;
           }
-        } else if(!isDef||deficit>=3){
+        } else if(!(psStars>=3&&isAtk&&canSkill(p,'powerShot'))&&(!isDef||deficit>=3)){
           lastShotPower=false;
           if(isAtk&&Math.random()<0.9)aiStrikerShoot(p,goalX);
           else aiShoot(p,goalX,AI.normalVelocity+Math.random()*AI.normalVariance);
-        } else {
+        } else if(isDef&&!(psStars>=3&&isAtk)){
           aiPass(p,players);  // defenders lay it off instead of shooting
         }
         tx=p.x; ty=p.y;
@@ -1109,9 +1110,8 @@ function aiUpdate(players,opps,dt){
         const dg=Math.abs(p.x-goalX);
         const effectiveRange=AI.shootRange*starRange;
         if(dg<effectiveRange&&p.kickCD<=0){
-          if(canSkill(p,'powerShot')&&dg<PS.goalRange*starRange&&Math.random()<PS.activateChance*starSkill*comebackMult*dt){
+          if(canSkill(p,'powerShot')&&dg<PS.goalRange*starRange&&Math.random()<psThresh){
             activateSkill(p,'powerShot');
-            const psStars=p.starLevels?.powerShot??1;
             const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
             aiShoot(p,goalX,PS.velocity*velMult);
             lastShotPower=true;
@@ -1123,13 +1123,13 @@ function aiUpdate(players,opps,dt){
                 ball.onFire = false;
                 ball.bypassesKeeper = false;
             }
-          } else if(canSkill(p,'longShot')&&dg<LS.maxRange*starRange&&dg>LS.minRange&&Math.random()<LS.activateChance*starSkill*comebackMult*dt){
+          } else if(!(psStars>=3&&isAtk&&canSkill(p,'powerShot'))&&canSkill(p,'longShot')&&dg<LS.maxRange*starRange&&dg>LS.minRange&&Math.random()<LS.activateChance*starSkill*comebackMult*dt){
             lastShotPower=false;
             activateSkill(p,'longShot');
             const lsStars=p.starLevels?.longShot??1;
             const velMult=lsStars>=3?1.0:lsStars>=2?0.5:0.3;
             aiShoot(p,goalX,LS.velocity*velMult);
-          } else if(dg<PS.goalRange*starRange&&Math.random()<AI.normalShootChance*shootMult*(p.ego>=3?1.28:1)*starSkill*comebackMult*dt){
+          } else if(!(psStars>=3&&isAtk&&canSkill(p,'powerShot'))&&dg<PS.goalRange*starRange&&Math.random()<AI.normalShootChance*shootMult*(p.ego>=3?1.28:1)*starSkill*comebackMult*dt){
             lastShotPower=false;
             if(isAtk&&Math.random()<0.9)aiStrikerShoot(p,goalX);
             else aiShoot(p,goalX,AI.normalVelocity+Math.random()*AI.normalVariance);

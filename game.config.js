@@ -348,7 +348,7 @@ export const ALL_TEAMS = [
       {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',1]],                             name:'Willy'  },
       {role:'rcm',rx:-0.24,ry: 0.26,skills:[['speedBoost',1]],                        name:'Kele'   },
       {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',3]],                        name:'Moses'  },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',1]],        name:'Victor' },
+      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Victor' },
       {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Sammy'  },
     ]},
   // 1 — WARRI FC ──────────────────────────────────────────────────────────────
@@ -364,7 +364,7 @@ export const ALL_TEAMS = [
       {role:'cm', rx:-0.16,ry: 0.00,skills:[['powerShot',3],['steal',1]],             name:'Alex'   },
       {role:'rcm',rx:-0.24,ry: 0.26,skills:[['longShot',1]],                          name:'Odion'  },
       {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Simy'   },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',1]],                         name:'Taiwo'  },
+      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],         name:'Taiwo'  },
       {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',3]],                          name:'Juju'   },
     ]},
   // 2 — LAGOS KINGS ───────────────────────────────────────────────────────────
@@ -380,7 +380,7 @@ export const ALL_TEAMS = [
       {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',1]],                             name:'Azeez'   },
       {role:'rcm',rx:-0.24,ry: 0.26,skills:[['speedBoost',1]],                        name:'Sikiru'  },
       {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Funmi'   },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',1]],        name:'Kayode'  },
+      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Kayode'  },
       {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Adeyemi' },
     ]},
   // 3 — ABUJA EAGLES ──────────────────────────────────────────────────────────
@@ -396,7 +396,7 @@ export const ALL_TEAMS = [
       {role:'cm', rx:-0.16,ry: 0.00,skills:[['longShot',3]],                          name:'Ibrahim'},
       {role:'rcm',rx:-0.24,ry: 0.26,skills:[['longShot',1]],                          name:'Umar'   },
       {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Nuhu'   },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['speedBoost',3],['powerShot',1]],        name:'Musa'   },
+      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Musa'   },
       {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Adamu'  },
     ]},
   // 4 — KANO STARS ────────────────────────────────────────────────────────────
@@ -412,7 +412,7 @@ export const ALL_TEAMS = [
       {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',1]],                             name:'Danjuma'},
       {role:'rcm',rx:-0.24,ry: 0.26,skills:[['speedBoost',1]],                        name:'Bala'   },
       {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Gambo'  },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',1]],                         name:'Yusuf'  },
+      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],         name:'Yusuf'  },
       {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',3],['speedBoost',1]],         name:'Bello'  },
     ]},
   // 5 — RIVERS ROVERS ─────────────────────────────────────────────────────────
@@ -428,7 +428,7 @@ export const ALL_TEAMS = [
       {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',1]],                             name:'Pepple'   },
       {role:'rcm',rx:-0.24,ry: 0.26,skills:[['speedBoost',1]],                        name:'Owunari'  },
       {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',3],['steal',1]],            name:'Tonye'    },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',1]],                         name:'Fubara'   },
+      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],         name:'Fubara'   },
       {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Peterside'},
     ]},
   // 6 — ENUGU FC ───────────────────────────────────────────────────────────────
@@ -444,7 +444,7 @@ export const ALL_TEAMS = [
       {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',3],['powerShot',1]],             name:'Tunde'    },
       {role:'rcm',rx:-0.24,ry: 0.26,skills:[['steal',1]],                             name:'Chidi'    },
       {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Ani'      },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',1]],        name:'Obinna'   },
+      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Obinna'   },
       {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Obi'      },
     ]},
 ];
