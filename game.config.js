@@ -9,7 +9,7 @@
 export const CANVAS = {
   logicalWidth:  800,
   logicalHeight: 480,
-  spritePixelSize: 1,  // SP — each sprite "dot" occupies this many real pixels²
+  spritePixelSize: 1.5,  // SP — each sprite "dot" occupies this many real pixels²
 };
 
 // ── PITCH GEOMETRY ────────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ export const PHYSICS = {
 
   player: {
     // Circle radius used for collision detection and pickup checks.
-    radius: 5,  // PRAD
+    radius: 7,  // PRAD
 
     // Push-apart kicks in when two players are closer than this × radius.
     // 1.0 = perfectly flush, 2.0 = twice their radius apart.
@@ -351,101 +351,101 @@ export const ALL_TEAMS = [
       {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Victor' },
       {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Sammy'  },
     ]},
-  // 1 — WARRI FC ──────────────────────────────────────────────────────────────
+  // 1 — WARRI FC ─── 4-2-3-1 Counter-attack ────────────────────────────────────
   { id:1, name:'WARRI FC',
     colors:{ shirt:'#dc2626',shorts:'#111111',skin:'#c8956c',hair:'#2a1408',gkShirt:'#7c3aed',gloves:'#fbbf24'},
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:3,name:'Chisom' },
-      {role:'lb', rx:-0.70,ry:-0.42,skills:[['speedBoost',1],['steal',1]],            name:'Oghe'   },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',1]],                             name:'Ike'    },
-      {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',3],['speedBoost',1]],             name:'Obi'    },
-      {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Chidi'  },
-      {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Augie'  },
-      {role:'cm', rx:-0.16,ry: 0.00,skills:[['powerShot',3],['steal',1]],             name:'Alex'   },
-      {role:'rcm',rx:-0.24,ry: 0.26,skills:[['longShot',1]],                          name:'Odion'  },
-      {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Simy'   },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],         name:'Taiwo'  },
-      {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',3]],                          name:'Juju'   },
+      {role:'lb', rx:-0.66,ry:-0.44,skills:[['speedBoost',1],['steal',1]],            name:'Oghe'   },
+      {role:'cb', rx:-0.60,ry:-0.17,skills:[['steal',1]],                             name:'Ike'    },
+      {role:'cb', rx:-0.60,ry: 0.17,skills:[['steal',3],['speedBoost',1]],            name:'Obi'    },
+      {role:'rb', rx:-0.66,ry: 0.44,skills:[['steal',1]],                             name:'Chidi'  },
+      {role:'lcm',rx:-0.42,ry:-0.22,skills:[['longShot',1]],                          name:'Augie'  },
+      {role:'rcm',rx:-0.42,ry: 0.22,skills:[['longShot',1]],                          name:'Odion'  },
+      {role:'cm', rx:-0.04,ry: 0.00,skills:[['powerShot',3],['steal',1]],             name:'Alex'   },
+      {role:'lw', rx: 0.08,ry:-0.40,skills:[['speedBoost',1]],                        name:'Simy'   },
+      {role:'rw', rx: 0.08,ry: 0.40,skills:[['longShot',3]],                          name:'Juju'   },
+      {role:'st', rx: 0.50,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Taiwo'  },
     ]},
-  // 2 — LAGOS KINGS ───────────────────────────────────────────────────────────
+  // 2 — LAGOS KINGS ─── 3-4-3 Wing-backs ────────────────────────────────────
   { id:2, name:'LAGOS KINGS',
     colors:{ shirt:'#1d4ed8',shorts:'#854d0e',skin:'#a06b3f',hair:'#1a0e08',gkShirt:'#f59e0b',gloves:'#ffffff'},
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:3,name:'Emmanuel'},
-      {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Badmus'  },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Razak'   },
-      {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Babatunde'},
-      {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Dauda'   },
-      {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Kareem'  },
-      {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',1]],                             name:'Azeez'   },
-      {role:'rcm',rx:-0.24,ry: 0.26,skills:[['speedBoost',1]],                        name:'Sikiru'  },
-      {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Funmi'   },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Kayode'  },
-      {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Adeyemi' },
+      {role:'lb', rx:-0.44,ry:-0.46,skills:[['steal',1],['speedBoost',1]],            name:'Badmus'  },
+      {role:'cb', rx:-0.66,ry:-0.20,skills:[['steal',3],['speedBoost',1]],            name:'Razak'   },
+      {role:'cb', rx:-0.66,ry: 0.20,skills:[['steal',1]],                             name:'Babatunde'},
+      {role:'rb', rx:-0.44,ry: 0.46,skills:[['steal',1],['speedBoost',1]],            name:'Dauda'   },
+      {role:'lcm',rx:-0.22,ry:-0.38,skills:[['longShot',1]],                          name:'Kareem'  },
+      {role:'cm', rx:-0.18,ry: 0.00,skills:[['steal',1]],                             name:'Azeez'   },
+      {role:'rcm',rx:-0.22,ry: 0.38,skills:[['speedBoost',1]],                        name:'Sikiru'  },
+      {role:'lw', rx: 0.34,ry:-0.44,skills:[['speedBoost',1]],                        name:'Funmi'   },
+      {role:'st', rx: 0.46,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Kayode'  },
+      {role:'rw', rx: 0.34,ry: 0.44,skills:[['longShot',1]],                          name:'Adeyemi' },
     ]},
-  // 3 — ABUJA EAGLES ──────────────────────────────────────────────────────────
+  // 3 — ABUJA EAGLES ─── 5-4-1 Ultra-defensive ──────────────────────────────
   { id:3, name:'ABUJA EAGLES',
     colors:{ shirt:'#1e3a5f',shorts:'#ffffff',skin:'#b5703a',hair:'#1a0e08',gkShirt:'#dc2626',gloves:'#ffffff'},
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:1,name:'Tanko'  },
-      {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Yakubu' },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Hassan' },
-      {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Mohammed'},
-      {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Salihu' },
-      {role:'lcm',rx:-0.24,ry:-0.26,skills:[['steal',1]],                             name:'Garba'  },
-      {role:'cm', rx:-0.16,ry: 0.00,skills:[['longShot',3]],                          name:'Ibrahim'},
-      {role:'rcm',rx:-0.24,ry: 0.26,skills:[['longShot',1]],                          name:'Umar'   },
-      {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Nuhu'   },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Musa'   },
-      {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Adamu'  },
+      {role:'lb', rx:-0.74,ry:-0.46,skills:[['steal',1]],                             name:'Yakubu' },
+      {role:'cb', rx:-0.70,ry:-0.26,skills:[['steal',3],['speedBoost',1]],            name:'Hassan' },
+      {role:'cb', rx:-0.70,ry: 0.26,skills:[['steal',1]],                             name:'Mohammed'},
+      {role:'rb', rx:-0.74,ry: 0.46,skills:[['steal',1]],                             name:'Salihu' },
+      {role:'lcm',rx:-0.36,ry:-0.38,skills:[['steal',1]],                             name:'Garba'  },
+      {role:'cm', rx:-0.32,ry: 0.00,skills:[['longShot',3]],                          name:'Ibrahim'},
+      {role:'rcm',rx:-0.36,ry: 0.38,skills:[['longShot',1]],                          name:'Umar'   },
+      {role:'lw', rx: 0.14,ry:-0.42,skills:[['speedBoost',1]],                        name:'Nuhu'   },
+      {role:'st', rx: 0.50,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Musa'   },
+      {role:'rw', rx: 0.14,ry: 0.42,skills:[['longShot',1]],                          name:'Adamu'  },
     ]},
-  // 4 — KANO STARS ────────────────────────────────────────────────────────────
+  // 4 — KANO STARS ─── 4-1-4-1 Pivot ─────────────────────────────────────────
   { id:4, name:'KANO STARS',
     colors:{ shirt:'#ca8a04',shorts:'#1c1917',skin:'#c8956c',hair:'#1a0e08',gkShirt:'#7c3aed',gloves:'#ffffff'},
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:3,name:'Aliyu'  },
-      {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Haruna' },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Lawal'  },
-      {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Surajo' },
-      {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Kabiru' },
-      {role:'lcm',rx:-0.24,ry:-0.26,skills:[['steal',1]],                             name:'Maikano'},
-      {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',1]],                             name:'Danjuma'},
-      {role:'rcm',rx:-0.24,ry: 0.26,skills:[['speedBoost',1]],                        name:'Bala'   },
-      {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Gambo'  },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],         name:'Yusuf'  },
-      {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',3],['speedBoost',1]],         name:'Bello'  },
+      {role:'lb', rx:-0.68,ry:-0.44,skills:[['steal',1]],                             name:'Haruna' },
+      {role:'cb', rx:-0.62,ry:-0.16,skills:[['steal',3],['speedBoost',1]],            name:'Lawal'  },
+      {role:'cb', rx:-0.62,ry: 0.16,skills:[['steal',1]],                             name:'Surajo' },
+      {role:'rb', rx:-0.68,ry: 0.44,skills:[['steal',1]],                             name:'Kabiru' },
+      {role:'cm', rx:-0.42,ry: 0.00,skills:[['steal',1]],                             name:'Danjuma'},
+      {role:'lcm',rx:-0.18,ry:-0.36,skills:[['steal',1]],                             name:'Maikano'},
+      {role:'rcm',rx:-0.18,ry: 0.36,skills:[['speedBoost',1]],                        name:'Bala'   },
+      {role:'lw', rx: 0.06,ry:-0.44,skills:[['speedBoost',1]],                        name:'Gambo'  },
+      {role:'rw', rx: 0.06,ry: 0.44,skills:[['longShot',3],['speedBoost',1]],         name:'Bello'  },
+      {role:'st', rx: 0.50,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Yusuf'  },
     ]},
-  // 5 — RIVERS ROVERS ─────────────────────────────────────────────────────────
+  // 5 — RIVERS ROVERS ─── 4-3-3 High Press ──────────────────────────────────
   { id:5, name:'RIVERS ROVERS',
     colors:{ shirt:'#c2410c',shorts:'#1c1917',skin:'#a06b3f',hair:'#1a0e08',gkShirt:'#16a34a',gloves:'#ffffff'},
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:1,name:'Ngozi'    },
-      {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Tamuno'   },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Chukwuka' },
-      {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Soberekon'},
-      {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Opuene'   },
-      {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Briggs'   },
-      {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',1]],                             name:'Pepple'   },
-      {role:'rcm',rx:-0.24,ry: 0.26,skills:[['speedBoost',1]],                        name:'Owunari'  },
-      {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',3],['steal',1]],            name:'Tonye'    },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],         name:'Fubara'   },
-      {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Peterside'},
+      {role:'lb', rx:-0.52,ry:-0.44,skills:[['steal',1],['speedBoost',1]],            name:'Tamuno'   },
+      {role:'cb', rx:-0.48,ry:-0.16,skills:[['steal',3],['speedBoost',1]],            name:'Chukwuka' },
+      {role:'cb', rx:-0.48,ry: 0.16,skills:[['steal',1]],                             name:'Soberekon'},
+      {role:'rb', rx:-0.52,ry: 0.44,skills:[['steal',1],['speedBoost',1]],            name:'Opuene'   },
+      {role:'lcm',rx:-0.22,ry:-0.30,skills:[['longShot',1]],                          name:'Briggs'   },
+      {role:'cm', rx:-0.10,ry: 0.00,skills:[['steal',1]],                             name:'Pepple'   },
+      {role:'rcm',rx:-0.22,ry: 0.30,skills:[['speedBoost',1]],                        name:'Owunari'  },
+      {role:'lw', rx: 0.36,ry:-0.44,skills:[['speedBoost',3],['steal',1]],            name:'Tonye'    },
+      {role:'st', rx: 0.44,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Fubara'   },
+      {role:'rw', rx: 0.36,ry: 0.44,skills:[['longShot',1]],                          name:'Peterside'},
     ]},
-  // 6 — ENUGU FC ───────────────────────────────────────────────────────────────
+  // 6 — ENUGU FC ─── 4-4-2 Diamond ────────────────────────────────────────────
   { id:6, name:'ENUGU FC',
     colors:{ shirt:'#7c3aed',shorts:'#ffffff',skin:'#a06b3f',hair:'#1a0e08',gkShirt:'#f59e0b',gloves:'#ffffff'},
     formation:[
       {role:'gk', rx:-0.92,ry: 0.00,skills:[],                             gkRating:1,name:'Eze'      },
-      {role:'lb', rx:-0.70,ry:-0.42,skills:[['steal',1]],                             name:'Ugwu'     },
-      {role:'cb', rx:-0.65,ry:-0.15,skills:[['steal',3],['speedBoost',1]],             name:'Okafor'   },
-      {role:'cb', rx:-0.65,ry: 0.15,skills:[['steal',1]],                             name:'Onuoha'   },
-      {role:'rb', rx:-0.70,ry: 0.42,skills:[['steal',1]],                             name:'Nwachukwu'},
-      {role:'lcm',rx:-0.24,ry:-0.26,skills:[['longShot',1]],                          name:'Ugochukwu'},
-      {role:'cm', rx:-0.16,ry: 0.00,skills:[['steal',3],['powerShot',1]],             name:'Tunde'    },
-      {role:'rcm',rx:-0.24,ry: 0.26,skills:[['steal',1]],                             name:'Chidi'    },
-      {role:'lw', rx: 0.32,ry:-0.44,skills:[['speedBoost',1]],                        name:'Ani'      },
-      {role:'st', rx: 0.42,ry: 0.00,skills:[['powerShot',3],['speedBoost',3]],        name:'Obinna'   },
-      {role:'rw', rx: 0.32,ry: 0.44,skills:[['longShot',1]],                          name:'Obi'      },
+      {role:'lb', rx:-0.68,ry:-0.44,skills:[['steal',1]],                             name:'Ugwu'     },
+      {role:'cb', rx:-0.62,ry:-0.16,skills:[['steal',3],['speedBoost',1]],            name:'Okafor'   },
+      {role:'cb', rx:-0.62,ry: 0.16,skills:[['steal',1]],                             name:'Onuoha'   },
+      {role:'rb', rx:-0.68,ry: 0.44,skills:[['steal',1]],                             name:'Nwachukwu'},
+      {role:'cm', rx:-0.40,ry: 0.00,skills:[['steal',3],['powerShot',1]],             name:'Tunde'    },
+      {role:'lcm',rx:-0.22,ry:-0.32,skills:[['longShot',1]],                          name:'Ugochukwu'},
+      {role:'rcm',rx:-0.22,ry: 0.32,skills:[['steal',1]],                             name:'Chidi'    },
+      {role:'lw', rx: 0.02,ry: 0.00,skills:[['speedBoost',1]],                        name:'Ani'      },
+      {role:'st', rx: 0.48,ry:-0.18,skills:[['powerShot',3],['speedBoost',3]],        name:'Obinna'   },
+      {role:'rw', rx: 0.48,ry: 0.18,skills:[['longShot',1]],                          name:'Obi'      },
     ]},
 ];
 

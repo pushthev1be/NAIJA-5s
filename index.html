@@ -1014,6 +1014,9 @@ function aiUpdate(players,opps,dt){
         if(distToLine>0&&distToLine<gkReactDist){
           const tFrames=distToLine/Math.abs(ball.vx);
           const predY=ball.y+ball.vy*tFrames;
+          const diveMargin=GH*0.55;
+          if(predY<MY-GH/2-diveMargin||predY>MY+GH/2+diveMargin) { /* shot is wide — don't dive */ }
+          else {
           const clampedY=clamp(predY,MY-GH/2+GK.goalMouthInset,MY+GH/2-GK.goalMouthInset);
           tx=gkX; ty=clampedY;
           p.diving=true; p.state='dive'; didDive=true;
@@ -1023,6 +1026,7 @@ function aiUpdate(players,opps,dt){
           p.y += (ty - p.y) * 0.4;
 
           if(gkR>=3&&Math.random()<0.55)showCallout('DIVING SAVE! 🤸',p.x,p.y-28,60);
+          }
         }
       }
       if(!didDive){
@@ -1077,20 +1081,27 @@ function aiUpdate(players,opps,dt){
       const starSkill=p.overallStars>=3?2.4:p.overallStars>=2?1.4:1;
       const starRange=p.overallStars>=3?1.45:p.overallStars>=2?1.18:1;
       if(canSkill(p,'speedBoost')&&Math.random()<SB.dribbleActivateChance*starSkill*dt)activateSkill(p,'speedBoost');
+      const psStars=p.starLevels?.powerShot??0;
+      const psThresh=psStars>=3&&isAtk?0.90:PS.activateChance*starSkill*comebackMult*dt;
       // Shoot BEFORE crossing into the penalty area (20px buffer outside the 18; 3★ wider)
       const boxPad=p.overallStars>=3?45:20;
       const nearBox=isHome
         ?(p.x>PX+PW-PBW-boxPad&&Math.abs(p.y-MY)<PBH/2+boxPad*0.6)
         :(p.x<PX+PBW+boxPad&&Math.abs(p.y-MY)<PBH/2+boxPad*0.6);
-      const psStars=p.starLevels?.powerShot??0;
-      const psThresh=psStars>=3&&isAtk?0.90:PS.activateChance*starSkill*comebackMult*dt;
-      if(nearBox&&p.kickCD<=0){
+      // Fireball hot-zones for 3★ strikers: top-of-box centre, wide flanks, long-range centre
+      const _dg=Math.abs(p.x-goalX), _dy=Math.abs(p.y-MY);
+      const inFlameZone=psStars>=3&&isAtk&&(
+        (_dg>=108&&_dg<=188&&_dy<72)   ||   // top of box — central
+        (_dg>=72 &&_dg<=168&&_dy>=68&&_dy<=148) ||   // wide left / right angles
+        (_dg>=188&&_dg<=275&&_dy<52)         // long-range central rocket
+      );
+      if((nearBox||inFlameZone)&&p.kickCD<=0){
         if(canSkill(p,'powerShot')&&Math.random()<psThresh){
           activateSkill(p,'powerShot');
           const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
           aiShoot(p,goalX,PS.velocity*velMult);
           lastShotPower=true;
-          if (psStars >= 3 && Math.random() < 0.6) {
+          if (psStars >= 3 && Math.random() < 0.9) {
               ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
               ball.bypassesKeeper = true;
               showCallout('FIREBALL! 🔥', p.x, p.y-28);
@@ -1115,7 +1126,7 @@ function aiUpdate(players,opps,dt){
             const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
             aiShoot(p,goalX,PS.velocity*velMult);
             lastShotPower=true;
-            if (psStars >= 3 && Math.random() < 0.6) {
+            if (psStars >= 3 && Math.random() < 0.9) {
                 ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
                 ball.bypassesKeeper = true;
                 showCallout('FIREBALL! 🔥', p.x, p.y-28);
