@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(taskkill /F /IM node.exe)",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const j=JSON.parse\\(d\\); j.models.forEach\\(m=>console.log\\(m.name, '|', m.supportedGenerationMethods?.join\\(','\\)\\)\\)\")",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git fetch *)",
+      "Bash(git stash *)",
+      "Bash(git pull *)",
+      "Bash(node --input-type=module)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const src=fs.readFileSync\\('index.html','utf8'\\); const m=src.match\\(/<script type=\\\\\"module\\\\\">\\([\\\\s\\\\S]*?\\)<\\\\/script>/\\); if\\(m\\){require\\('vm'\\).runInNewContext\\('\\(\\(\\) => {'+m[1]+'}\\)', {}, {filename:'index.html'}\\)}\")",
+      "Bash(ls public *)",
+      "Bash(cat vite.config.js)",
+      "Bash(cat vite.config.ts)",
+      "Bash(git mv *)",
+      "Skill(update-config)",
+      "Bash(claude mcp *)",
+      "Bash(node generate-sprites.js)"
+    ]
+  }
+}

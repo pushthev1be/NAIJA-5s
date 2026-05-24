@@ -1,0 +1,9 @@
+[mcp_servers.pixellab]
+args = [
+    "-y",
+    "pixellab-mcp",
+]
+command = "npx"
+
+[mcp_servers.pixellab.env]
+PIXELLAB_SECRET_KEY = ""
