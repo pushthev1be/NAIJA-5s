@@ -47,5 +47,22 @@ A fast-paced, arcade-style 5v5 soccer simulation built in pure HTML5 and JavaScr
    ```
 4. Open the provided localhost URL in your browser and enjoy the match!
 
+## Commentary voices (Afro Mike & Coach Bayo)
+
+The commentator lines live in `commentary.js` (on-screen text, the spoken version, and Bayo's replies). Voice clips are generated **once on your computer** and shipped with the game, so no API key ever reaches players.
+
+1. Pick two voices in the ElevenLabs Voice Library (search "Nigerian"): a hype one for Mike and a calmer one for Bayo. Copy their voice IDs.
+2. Create a `.env` file in the project root (it's git-ignored):
+   ```
+   ELEVENLABS_API_KEY=your_key
+   ELEVEN_VOICE_MIKE=voice_id_for_mike
+   ELEVEN_VOICE_BAYO=voice_id_for_bayo
+   ```
+3. Run `npm run voices`. Clips go to `public/commentary/` with a `manifest.json`. Commit them.
+   - `npm run voices -- --force` regenerates everything; `--only goal_burst,save_brick` redoes specific lines.
+   - Recorded your own? Save each as `public/commentary/<id>.mp3` (ids are in `commentary.js`) and run `npm run voices -- --manifest-only`.
+
+Lines without a clip simply show as text.
+
 ## Technology
 Built entirely from scratch with Vanilla HTML5 Canvas and JavaScript. No external rendering engines or physics libraries were used!

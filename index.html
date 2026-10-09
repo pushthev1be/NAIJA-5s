@@ -23,7 +23,8 @@ html,body{width:100%;height:100%;background:#050A05;overflow:hidden;display:flex
 import { CANVAS, PITCH, PHYSICS, RULES, MOVEMENT, POWER, SKILLS, TEAMS, ALL_TEAMS, UI, BALANCE } from './game.config.js';
 import { initDevPanel, logCpuMatch } from './dev-panel.js';
 import { initTouchControls, setTouchMode, stick, isTouchDevice } from './touch-controls.js';
-import { unlockAudio, sndBallHit, sndBoom, sndNiceShot, sndTap, sndGoal, sndNetBoom, startCrowd, tickCrowd, stopRetroMusic, playRetroMusic, sndWhistle } from './sound.js';
+import { LINES, COMMENTATORS } from './commentary.js';
+import { unlockAudio, sndBallHit, sndBoom, sndNiceShot, sndTap, sndGoal, sndNetBoom, playVoice, startCrowd, tickCrowd, stopRetroMusic, playRetroMusic, sndWhistle } from './sound.js';
 
 // ── CANVAS ────────────────────────────────────────────────────────────────────
 const cv=document.getElementById('g'), cx=cv.getContext('2d');
@@ -678,63 +679,44 @@ function initWeather(){
   if(weatherMode==='rain')initRainStreaks(); else initSnowFlakes();
 }
 
-// ── GEMINI COMMENTARY ─────────────────────────────────────────────────────────
-const COMMENTARY_KEY=typeof import.meta!=='undefined'?(import.meta.env?.VITE_GEMINI_KEY??''):'';
-let commentary=null;         // {text, t, maxT}
-let commentaryCooldown=0;    // frames before next call allowed
+// ── COMMENTARY (AFRO MIKE + COACH BAYO, lines in commentary.js) ──────────────
+let commentary=null;         // {who, text, t, maxT, reply?, replyAt?}
+let commentaryCooldown=0;    // frames before the next event can be called
 let lastKicker=null;         // last player to shoot — for goal attribution
 let lastShotPower=false;     // true when last shot was a power shot
 let prevGKOwner=null;        // track GK ball-ownership transitions (save detection)
 
-const CMTRY_FALLBACK={
-  goal:      ['E BURST AM!!','NAIJA WAHALA!','NA GOD SEND AM!','WHO BORN DIS BOY?!','FIRE GOAL!','FINISH WORK!'],
-  save:      ['GK CHOKE AM!','NO WAY NO HOW!','BRICK WALL!!','HE SEE AM EARLY!','ABEG... NAH!!'],
-  powerShot: ['THUNDER FEET!','WAH WAH WAH!','MISSILE LAUNCH!!','E CARRY POWER O!'],
-  flashSteal:['E ROB AM CLEAN!','THIEF THIEF!!','NAIJA DEF!!','CLEAN SWIPE BESTIE!'],
-  speedBoost:['HE VOOM!','ZOOM ZOOM!!!','E JUS PASS!','ROCKET MAN!'],
-  longShot:  ['FROM THERE?!','LONG RANGE MADNESS!','IMPOSSIBLE SHOT!','NAH!!! FROM OUTSIDE?!'],
-};
-
-async function callGeminiLive(apiKey,prompt){
-  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-  const resp=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
-  if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
-  const data=await resp.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text??'';
+// Show a line and play its voice clip (if generated). A reply from the other
+// commentator follows once the first clip ends, or after a beat when text-only.
+function sayLine(line,reply){
+  commentary={who:line.who,text:line.text,t:0,maxT:200,reply,replyAt:reply?110:Infinity};
+  const c=commentary;
+  playVoice(line.id,()=>{ if(c===commentary&&c.reply)c.replyAt=c.t+12; });
 }
-
-async function triggerCommentary(eventKey,playerName){
+function triggerCommentary(eventKey){
   if(commentaryCooldown>0)return;
+  const pool=LINES[eventKey]; if(!pool)return;
   commentaryCooldown=260;
-  const pool=CMTRY_FALLBACK[eventKey]??CMTRY_FALLBACK.goal;
-  commentary={text:pool[Math.floor(Math.random()*pool.length)],t:0,maxT:300};
-  if(!COMMENTARY_KEY)return;
-  try{
-    const evDesc={
-      goal:      `${playerName} just scored an amazing goal`,
-      save:      `goalkeeper ${playerName} made an incredible save`,
-      powerShot: `${playerName} unleashed a massive power shot`,
-      flashSteal:`${playerName} stole the ball with a flash tackle`,
-      speedBoost:`${playerName} burst forward with speed boost`,
-      longShot:  `${playerName} scored a brilliant long-range goal`,
-    }[eventKey]??eventKey;
-    const prompt=`You are a hype Nigerian football commentator called Afro Mike. Write ONE punchy exclamation about: "${evDesc}". Max 7 words. Nigerian Pidgin English. No quotes.`;
-    const raw=await callGeminiLive(COMMENTARY_KEY,prompt);
-    const clean=raw.trim().replace(/^["'`]|["'`]$/g,'').replace(/[.!?]+$/,'').toUpperCase().trim();
-    if(clean&&clean.length>=3&&clean.length<=55)commentary={text:clean,t:0,maxT:340};
-  }catch{/* keep fallback */}
+  const line=pool[Math.floor(Math.random()*pool.length)];
+  sayLine(line,line.reply&&Math.random()<0.6?line.reply:null);
+}
+function tickCommentary(dt){
+  if(commentaryCooldown>0)commentaryCooldown=Math.max(0,commentaryCooldown-dt);
+  if(!commentary)return;
+  commentary.t+=dt;
+  if(commentary.reply&&commentary.t>=commentary.replyAt){sayLine(commentary.reply,null);return;}
+  if(commentary.t>=commentary.maxT)commentary=null;
 }
 
 function drawCommentary(){
   if(!commentary)return;
-  const{text,t,maxT}=commentary;
+  const{text,t,maxT,who}=commentary;
   const prog=t/maxT;
   const a=prog<0.08?prog/0.08:prog>0.78?1-(prog-0.78)/0.22:1;
   if(a<=0)return;
   cx.save();cx.globalAlpha=Math.max(0,a);
   cx.font='bold 8px monospace';
-  const tag='AFRO MIKE: ';
+  const tag=COMMENTATORS[who].name+': ';
   const twTag=cx.measureText(tag).width;
   const twTxt=cx.measureText(text).width;
   const totalW=twTag+twTxt+18;
@@ -742,7 +724,7 @@ function drawCommentary(){
   cx.fillStyle='rgba(6,6,18,0.90)';cx.fillRect(bx2,by2,totalW,bh);
   cx.strokeStyle='rgba(253,224,71,0.45)';cx.lineWidth=0.8;cx.strokeRect(bx2,by2,totalW,bh);
   cx.textAlign='left';
-  cx.fillStyle='#fde047';cx.fillText(tag,bx2+7,by2+10);
+  cx.fillStyle=COMMENTATORS[who].color;cx.fillText(tag,bx2+7,by2+10);
   cx.fillStyle='#ffffff';cx.fillText(text,bx2+7+twTag,by2+10);
   cx.restore();
 }
@@ -787,6 +769,8 @@ function initMatch(hDef=matchHomeDef,aDef=matchAwayDef){
   ball=mkBall();
   resetPossession();
   resetFx();
+  commentary=null; commentaryCooldown=0;
+  triggerCommentary('kickoff');
   // Control the ST (or last outfield player if no ST)
   ctrlIdx=home.findIndex(p=>p.role==='st');
   if(ctrlIdx<0)ctrlIdx=home.length-1;
@@ -882,7 +866,7 @@ function activateSkill(p,name){
     const opps=p.team==='home'?away:home;
     for(const o of opps){if(dst(p,o)<FT.radius){o.feinted=true;o.feintT=FT.duration;}}
     rumbleCpuSkill();
-    if(Math.random()<0.32)triggerCommentary('speedBoost',p.name);
+    if(Math.random()<0.32)triggerCommentary('speedBoost');
   }
   // Chase-down flash steal — defender speedBoost near an opponent carrier
   const isDefR=p.role==='cb'||p.role==='lb'||p.role==='rb';
@@ -899,11 +883,11 @@ function activateSkill(p,name){
       spawnSparks(p.x,p.y,def.spkCol,16);
       spawnRing(p.x,p.y,def.col,44,3);
       rumbleTackle();
-      triggerCommentary('flashSteal',p.name);
+      triggerCommentary('flashSteal');
     }
   }
-  if(name==='powerShot')triggerCommentary('powerShot',p.name);
-  else if(name==='longShot')triggerCommentary('longShot',p.name);
+  if(name==='powerShot')triggerCommentary('powerShot');
+  else if(name==='longShot')triggerCommentary('longShot');
 }
 
 // ── DUELS & POSSESSION ───────────────────────────────────────────────────────
@@ -1499,7 +1483,7 @@ function updateBall(dt){
       const nearRight=ball.x>PX+PW-16&&Math.abs(ball.vx)>2;
       if(nearLeft||nearRight){
         const distToMouth=Math.min(Math.abs(ball.y-topPost),Math.abs(ball.y-botPost));
-        if(distToMouth<NM)showCallout('SO CLOSE! 😬',ball.x,ball.y-24,60);
+        if(distToMouth<NM){showCallout('SO CLOSE! 😬',ball.x,ball.y-24,60);triggerCommentary('nearMiss');}
       }
     }
   }
@@ -1543,7 +1527,7 @@ function goalScore(team){
       lastKicker.speechBubble={text:CEL[Math.floor(Math.random()*CEL.length)],t:0,maxT:280};
     }
   }
-  triggerCommentary('goal',lastKicker?.name??(team===0?'NAIJA':'AWAY'));
+  triggerCommentary('goal');
   setTimeout(()=>resetKO(team), RULES.goalResetDelay);
 }
 
@@ -2467,8 +2451,7 @@ function loop(ts){
   const physDt=hitStop>0?0:dt*(slowFrac>0?lerp(1,SM.factor,slowFrac):1);
   tickFx(dt);
   updateCallouts(dt);
-  if(commentaryCooldown>0)commentaryCooldown=Math.max(0,commentaryCooldown-dt);
-  if(commentary){commentary.t+=dt;if(commentary.t>=commentary.maxT)commentary=null;}
+  tickCommentary(dt);
 
   // Trail decay
   for(const t of trails)t.a-=BALANCE.trail.decayRate*dt;
@@ -2559,7 +2542,7 @@ function loop(ts){
       showCallout(saveLbl,curGK.x,curGK.y-28,75);
       const sayCel=gkR2>=3?['E HOLD AM!','LIKE A WALL!','NAIJA GK!!!']:['GK CHOKE AM!','NO WAY!!!'];
       curGK.speechBubble={text:sayCel[Math.floor(Math.random()*sayCel.length)],t:0,maxT:160};
-      triggerCommentary('save',curGK.name);
+      triggerCommentary('save');
     }
     prevGKOwner=ball.owner?.role==='gk'?ball.owner:null;
     updateParticles(physDt);

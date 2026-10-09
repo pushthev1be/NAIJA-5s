@@ -2,10 +2,12 @@
   "name": "naija-5s",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "voices": "node scripts/generate-commentary.mjs"
   },
   "devDependencies": {
     "vite": "^5.4.0"

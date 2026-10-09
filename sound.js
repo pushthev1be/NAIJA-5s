@@ -97,6 +97,42 @@ export function stopRetroMusic() {
   });
 }
 
+// ── COMMENTARY VOICES ─────────────────────────────────────────────────────────
+// Pre-generated clips live in public/commentary/<id>.mp3 and are listed in
+// manifest.json (see scripts/generate-commentary.mjs). Lines without a clip
+// stay text-only.
+const voiceClips = new Map();
+let currentVoice = null;
+
+fetch('commentary/manifest.json')
+  .then(r => (r.ok ? r.json() : { clips: [] }))
+  .then(({ clips }) => {
+    for (const id of clips) {
+      const a = new Audio(`commentary/${id}.mp3`);
+      a.preload = 'auto';
+      voiceClips.set(id, a);
+    }
+  })
+  .catch(() => {});
+
+function duck(on) {
+  if (crowdBus) crowdBus.gain.setTargetAtTime(on ? 0.35 : 1, AC().currentTime, on ? 0.05 : 0.4);
+  if (!retroAudio.paused && !_retroFadeTimer) retroAudio.volume = on ? MUSIC_VOL * 0.35 : MUSIC_VOL;
+}
+
+// Play a commentary clip; onEnd fires when it finishes. Returns false if there is no clip.
+export function playVoice(id, onEnd) {
+  const a = voiceClips.get(id);
+  if (!a) return false;
+  if (currentVoice && currentVoice !== a) { currentVoice.pause(); currentVoice.onended = null; }
+  currentVoice = a;
+  a.currentTime = 0;
+  a.onended = () => { duck(false); currentVoice = null; onEnd?.(); };
+  duck(true);
+  a.play().catch(() => { duck(false); currentVoice = null; onEnd?.(); });
+  return true;
+}
+
 // ── WHISTLE ────────────────────────────────────────────────────────────────────
 export function sndWhistle() {
   resume();
@@ -147,7 +183,7 @@ export function sndTap() {
 }
 
 // ── CROWD ─────────────────────────────────────────────────────────────────────
-let crowdSrc = null, crowdGain = null, crowdFilt = null;
+let crowdSrc = null, crowdGain = null, crowdFilt = null, crowdBus = null;
 let crowdLocked = false;
 
 export function startCrowd() {
@@ -157,6 +193,8 @@ export function startCrowd() {
   const ctx = AC();
   const sec = 4;
   const sz = Math.ceil(ctx.sampleRate * sec);
+  crowdBus = ctx.createGain();               // shared bus so commentary can duck the crowd
+  crowdBus.connect(ctx.destination);
 
   function makeLayer(filterFreq, q, gain) {
     const buf = ctx.createBuffer(1, sz, ctx.sampleRate);
@@ -168,7 +206,7 @@ export function startCrowd() {
     filt.type = 'lowpass'; filt.frequency.value = filterFreq; filt.Q.value = q;
     const g = ctx.createGain();
     g.gain.value = gain;
-    src.connect(filt); filt.connect(g); g.connect(ctx.destination);
+    src.connect(filt); filt.connect(g); g.connect(crowdBus);
     src.start(); src.loopStart = Math.random() * sec;
     return { src, filt, g };
   }
