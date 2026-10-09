@@ -48,47 +48,53 @@ function noise(dur, vol, filterFreq = 1200, q = 1.2, t0) {
 // ── RETRO MUSIC ───────────────────────────────────────────────────────────────
 const retroAudio = new Audio(new URL('./retro.mp3', import.meta.url).href);
 retroAudio.loop = true;
-retroAudio.volume = 0.52;
+retroAudio.volume = 0;
 let _retroFadeTimer = null;
-let _retroUnlocked = false;
+let _musicWanted = false;   // menus and pause want music; matches don't
+const MUSIC_VOL = 0.52;
 
-// Start music on first user gesture (browser autoplay policy)
-const _tryStart = () => {
-  if (_retroUnlocked) return;
-  _retroUnlocked = true;
-  retroAudio.play().catch(() => {});
-};
-document.addEventListener('click',       _tryStart);
-document.addEventListener('keydown',     _tryStart);
-document.addEventListener('pointerdown', _tryStart);
-
-export function playRetroMusic() {
+function fadeTo(target, ms, then) {
   if (_retroFadeTimer) { clearInterval(_retroFadeTimer); _retroFadeTimer = null; }
-  retroAudio.volume = 0;
-  retroAudio.play().catch(() => {});
-  // Fade in over 500ms
-  const target = 0.52, steps = 25, interval = 20;
+  const from = retroAudio.volume, steps = Math.max(1, Math.round(ms / 20));
   let step = 0;
   _retroFadeTimer = setInterval(() => {
     step++;
-    retroAudio.volume = Math.min(target, target * (step / steps));
-    if (step >= steps) { clearInterval(_retroFadeTimer); _retroFadeTimer = null; }
-  }, interval);
+    retroAudio.volume = from + (target - from) * Math.min(1, step / steps);
+    if (step >= steps) { clearInterval(_retroFadeTimer); _retroFadeTimer = null; then?.(); }
+  }, 20);
+}
+
+function startMusic() {
+  if (!_musicWanted) return;
+  if (!retroAudio.paused) { fadeTo(MUSIC_VOL, 500); return; }
+  retroAudio.volume = 0;
+  // Rejected until the page has had a user gesture; _onGesture retries.
+  retroAudio.play().then(() => fadeTo(MUSIC_VOL, 500)).catch(() => {});
+}
+
+// Browsers only allow sound after a user gesture, and on touch screens that is
+// the finger lifting (touchend/pointerup/click), not touching down. Retry on
+// every such event until music and sound effects are actually running.
+const _onGesture = () => {
+  resume();
+  if (_musicWanted && retroAudio.paused) startMusic();
+};
+for (const ev of ['pointerup', 'touchend', 'click', 'keydown'])
+  document.addEventListener(ev, _onGesture, true);
+
+// Menus and pause: fade the music in (or keep it playing).
+export function playRetroMusic() {
+  _musicWanted = true;
+  startMusic();
 }
 
 export function stopRetroMusic() {
+  _musicWanted = false;
   if (retroAudio.paused) return;
-  if (_retroFadeTimer) { clearInterval(_retroFadeTimer); _retroFadeTimer = null; }
-  const startVol = retroAudio.volume, steps = 20, interval = 20;
-  let step = 0;
-  _retroFadeTimer = setInterval(() => {
-    step++;
-    retroAudio.volume = Math.max(0, startVol * (1 - step / steps));
-    if (step >= steps) {
-      clearInterval(_retroFadeTimer); _retroFadeTimer = null;
-      retroAudio.pause(); retroAudio.currentTime = 0; retroAudio.volume = 0.52;
-    }
-  }, interval);
+  fadeTo(0, 400, () => {
+    if (_musicWanted) return;               // a menu asked for music again mid-fade
+    retroAudio.pause(); retroAudio.currentTime = 0;
+  });
 }
 
 // ── WHISTLE ────────────────────────────────────────────────────────────────────

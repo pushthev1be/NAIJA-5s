@@ -1834,6 +1834,7 @@ function drawRadar(){
 
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────────
 let menuState='title';
+let wasInMenu=false;
 let gameMode='vsAI';
 let p1TeamIdx=0, p2TeamIdx=1, menuCursor=0, menuPhase='p1';
 let leagueState=null;
@@ -2205,6 +2206,10 @@ function loop(ts){
   lastTS=ts;
   const inp=readInput();
   setTouchMode(menuState!=='match'?'menu':paused?'paused':'play');
+  // Music on entering any menu (title on load, or back from a match)
+  const inMenu=menuState!=='match';
+  if(inMenu&&!wasInMenu)playRetroMusic();
+  wasInMenu=inMenu;
   if(menuState!=='match'){drawMenu(inp);return;}
   if(inp.pausePressed&&(phase==='play'||phase==='kickoff'||paused)){
     paused=!paused;
