@@ -59,12 +59,14 @@ if (flag('--dry-run')) {
 }
 
 const KEY = process.env.ELEVENLABS_API_KEY;
-const VOICES = { mike: process.env.ELEVEN_VOICE_MIKE, bayo: process.env.ELEVEN_VOICE_BAYO };
+// Defaults: Nigerian voices from the ElevenLabs library (Kingsley, Omoba Adewale)
+const VOICES = { mike: process.env.ELEVEN_VOICE_MIKE || 'qI3WhVwOi6AWSvF21pxH', bayo: process.env.ELEVEN_VOICE_BAYO || 'WDhIjC9oLMu7YmHuFOXN' };
 const MODEL = process.env.ELEVEN_MODEL || 'eleven_multilingual_v2';
-if (!KEY || !VOICES.mike || !VOICES.bayo) {
-  console.error('Set ELEVENLABS_API_KEY, ELEVEN_VOICE_MIKE and ELEVEN_VOICE_BAYO in .env (see the top of this file).');
+if (!VOICES.mike || !VOICES.bayo) {
+  console.error('Set ELEVEN_VOICE_MIKE and ELEVEN_VOICE_BAYO (and ELEVENLABS_API_KEY) in .env — see the top of this file.');
   process.exit(1);
 }
+if (!KEY) console.warn('No ELEVENLABS_API_KEY set — sending requests without one (only works behind an auth proxy).');
 
 // Mike is loud and expressive; Bayo is steadier.
 const SETTINGS = {
@@ -75,7 +77,7 @@ const SETTINGS = {
 async function tts(line, attempt = 1) {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICES[line.who]}?output_format=mp3_44100_64`, {
     method: 'POST',
-    headers: { 'xi-api-key': KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+    headers: { ...(KEY ? { 'xi-api-key': KEY } : {}), 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
     body: JSON.stringify({ text: line.say, model_id: MODEL, voice_settings: SETTINGS[line.who] }),
   });
   if (res.status === 429 && attempt < 5) {          // rate limited: back off and retry
