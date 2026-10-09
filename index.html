@@ -924,6 +924,9 @@ function activateSkill(p,name){
 let possT=0, prevOwner=null;
 const teamChallengeT={home:0,away:0}, teamShotT={home:0,away:0};
 function tickPossession(dt){
+  const sp=Math.hypot(ball.vx,ball.vy);
+  if(ball.owner||sp<BALANCE.pass.shieldEndSpeed)ball.shielded=false;
+  if(ball.passTo){ball.passT+=dt;if(ball.owner||sp<0.3||ball.passT>BALANCE.pass.maxReceiveFrames)ball.passTo=null;}
   if(ball.owner!==prevOwner){prevOwner=ball.owner;possT=0;}
   else possT+=dt;
   for(const t of ['home','away']){
@@ -956,6 +959,42 @@ function laneBlocked(p,goalX,opps){
     const ox=o.x-p.x,oy=o.y-p.y,d=Math.hypot(ox,oy);
     return d>0&&d<L&&(ox*gx+oy*gy)/d>0.85;
   });
+}
+
+// ── PASSING ──────────────────────────────────────────────────────────────────
+// Pass speed is solved from the ball's rolling friction so it reaches the
+// receiver with a controllable pace, and the receiver runs onto it.
+function rollDecay(){
+  const BP=PHYSICS.ball;
+  const fm=weatherMode==='rain'?-BALANCE.weather.rain.frictionMod:weatherMode==='snow'?-BALANCE.weather.snow.frictionMod:0;
+  return (BP.friction+fm)*BP.groundFriction;
+}
+function passSpeed(d){
+  const P=BALANCE.pass;
+  return clamp(P.arrivalSpeed+d*(1-rollDecay()),P.minSpeed,P.maxSpeed);
+}
+// Can any opponent reach a point on the pass line before the ball gets there?
+function passLaneBlocked(p,m,opps){
+  const P=BALANCE.pass, r=rollDecay();
+  const dx=m.x-p.x,dy=m.y-p.y,L=Math.hypot(dx,dy)||1, v0=passSpeed(L);
+  return opps.some(o=>{
+    for(let t=0.15;t<0.95;t+=0.1){
+      const px=p.x+dx*t,py=p.y+dy*t,along=L*t;
+      // frames for the rolling ball to cover `along`: v0(1-r^n)/(1-r)=along
+      const k=1-along*(1-r)/v0; if(k<=0)return true;
+      const frames=Math.log(k)/Math.log(r);
+      if(Math.hypot(px-o.x,py-o.y)-PRAD-BRAD<P.interceptSpeed*frames)return true;
+    }
+    return false;
+  });
+}
+function makePass(p,m){
+  const v=passSpeed(dst(p,m));
+  const[bx,by]=nrm(m.x-p.x,m.y-p.y);
+  ball.owner=null;
+  ball.vx=bx*v; ball.vy=by*v; ball.z=1; ball.vz=0.3;
+  ball.onFire=false; ball.isCurveShot=false; ball.bypassesKeeper=false; ball.shielded=false;
+  ball.passTo=m; ball.passT=0;
 }
 
 // ── AI ACTIONS ────────────────────────────────────────────────────────────────
@@ -1004,8 +1043,7 @@ function aiPass(p,mates){
     if(s>bs){bs=s;best=m;}
   }
   const tgt=best??mates.find(m=>m!==p)??p;
-  const[bx,by]=nrm(tgt.x-p.x,tgt.y-p.y);
-  ball.vx=bx*POWER.ai.passVelocity; ball.vy=by*POWER.ai.passVelocity;
+  makePass(p,tgt);
   p.kickCD=10;
 }
 const canChallenge=p=>p.tackleCD<=0&&teamChallengeT[p.team]<=0&&!inGrace();
@@ -1298,9 +1336,20 @@ function aiUpdate(players,opps,dt){
       }
 
     } else {
-      // No one has ball — nearest outfield player chases
-      const nearest=[...players].filter(m=>m.role!=='gk').sort((a,b)=>dst(a,ball)-dst(b,ball))[0];
-      if(nearest===p){tx=ball.x;ty=ball.y;}
+      // No one has ball — the intended pass receiver runs onto it, else nearest outfield player chases
+      const rcv=ball.passTo&&players.includes(ball.passTo)?ball.passTo:null;
+      if(rcv){
+        if(p===rcv){
+          // meet the ball on its line: aim a little ahead of the ball along its path
+          const sp=Math.hypot(ball.vx,ball.vy);
+          const lead=Math.min(dst(p,ball)*0.5,sp*12);
+          const[ux,uy]=sp>0.1?nrm(ball.vx,ball.vy):[0,0];
+          tx=ball.x+ux*lead; ty=ball.y+uy*lead;
+        }
+      } else {
+        const nearest=[...players].filter(m=>m.role!=='gk').sort((a,b)=>dst(a,ball)-dst(b,ball))[0];
+        if(nearest===p){tx=ball.x;ty=ball.y;}
+      }
     }
 
     const ddx=tx-p.x,ddy=ty-p.y,dd=Math.hypot(ddx,ddy);
@@ -1331,10 +1380,10 @@ function aiUpdate(players,opps,dt){
     else if(p.state==='idle')p.frame=0;
     
     const isGK = p.role === 'gk';
-    const pickupR = isGK && p.diving ? 28 : (isGK ? 18 : PRAD+BRAD+PHYSICS.ball.pickupRadius);
+    const pickupR = isGK && p.diving ? 28 : (isGK ? 18 : PRAD+BRAD+PHYSICS.ball.pickupRadius+(ball.passTo===p?BALANCE.pass.receiveBonus:0));
     const maxZ = isGK ? 30 : PHYSICS.ball.maxPickupZ;
 
-    let canCatch = !ball.bypassesKeeper;
+    let canCatch = !ball.bypassesKeeper && !(ball.shielded && !isGK);
     if(ball.bypassesKeeper && isGK && lastKicker) {
         const gkStars = p.gkRating ?? p.overallStars ?? 1;
         const kickerStars = lastKicker.overallStars ?? 1;
@@ -1561,7 +1610,7 @@ function updateControlled(p,inp,dt,cs=ctrl1){
   }
 
   // Pick up loose ball
-  if(!ball.owner&&p.kickCD<=0&&dst(p,ball)<PRAD+BRAD+PHYSICS.ball.pickupRadius&&ball.z<PHYSICS.ball.maxPickupZ)ball.owner=p;
+  if(!ball.owner&&!ball.shielded&&p.kickCD<=0&&dst(p,ball)<PRAD+BRAD+PHYSICS.ball.pickupRadius+(ball.passTo===p?BALANCE.pass.receiveBonus:0)&&ball.z<PHYSICS.ball.maxPickupZ)ball.owner=p;
 
   // ── Kick state machine ──────────────────────────────────────────────────
   const CH=POWER.charge, TP=POWER.tap, TK=POWER.tackle;
@@ -1635,6 +1684,8 @@ function updateControlled(p,inp,dt,cs=ctrl1){
       p.kickCD=CH.kickCooldown; p.state='kick';
       spawnSparks(p.x+p.dir*8,p.y,'kick',Math.floor(power*12)+4);
       lastShotPower=(power > 1.0 && is3Star);
+      // Charged shots fly past outfield players; only the keeper can stop them
+      ball.shielded=power>=0.5; ball.passTo=null;
       if(power > 1.0 && is3Star){sndBoom();}
       else if(power>=CH.boomThreshold){showCallout('BOOM! 🔥',p.x,p.y-28);rumbleBoom();sndBoom();}
       else if(power>=CH.niceThreshold){showCallout('NICE SHOT!',p.x,p.y-26);rumbleNiceShot();sndNiceShot();}
@@ -1659,19 +1710,29 @@ function updateControlled(p,inp,dt,cs=ctrl1){
 
   // Quick pass (Square/X / E key) — instant ground pass to best forward teammate
   if(inp.passPressed&&ball.owner===p&&cs.kickState==='idle'){
+    // Pick the receiver: the teammate the stick points at; otherwise the best
+    // forward option. Blocked lanes and tightly marked players are avoided.
     const mates=(p.team==='home'?home:away).filter(m=>m!==p);
+    const opps=p.team==='home'?away:home;
     const d2=p.team==='home'?1:-1;
+    const aim=Math.hypot(inp.dx,inp.dy)>0.3?nrm(inp.dx,inp.dy):null;
     let best=null,bs=-Infinity;
     for(const m of mates){
-      const fwd=d2*(m.x-p.x);
-      const s=fwd*0.7-dst(p,m)*0.05;
+      const d=dst(p,m);
+      const open=Math.min(60,Math.min(...opps.map(o=>dst(o,m))));
+      const blocked=passLaneBlocked(p,m,opps);
+      let s;
+      if(aim){
+        const al=((m.x-p.x)*aim[0]+(m.y-p.y)*aim[1])/(d||1);
+        if(al<0.35)continue;
+        s=al*120-d*0.1-(blocked?90:0)+open*0.3;
+      } else {
+        s=d2*(m.x-p.x)*0.5-d*0.12-(blocked?200:0)+open*0.6-(m.role==='gk'?60:0);
+      }
       if(s>bs){bs=s;best=m;}
     }
     if(best){
-      ball.owner=null;
-      const[pbx,pby]=nrm(best.x-p.x,best.y-p.y);
-      ball.vx=pbx*POWER.ai.passVelocity; ball.vy=pby*POWER.ai.passVelocity;
-      ball.z=1; ball.vz=0.3;
+      makePass(p,best);
       p.kickCD=TP.kickCooldown; p.state='kick';
       spawnSparks(p.x,p.y,'green',4); rumbleTap();
     }
@@ -2205,7 +2266,8 @@ function loop(ts){
   const dt=Math.min((ts-lastTS)/16.67,4);
   lastTS=ts;
   const inp=readInput();
-  setTouchMode(menuState!=='match'?'menu':paused?'paused':'play');
+  setTouchMode(menuState!=='match'?'menu':paused?'paused':'play',
+    menuState==='match'&&ball?{mine:ball.owner?.team==='home',theirs:ball.owner?.team==='away'}:null);
   // Music on entering any menu (title on load, or back from a match)
   const inMenu=menuState!=='match';
   if(inMenu&&!wasInMenu)playRetroMusic();

@@ -1,5 +1,5 @@
 // ── Naija 5s — On-screen touch controls (mobile / tablet) ────────────────────
-// PlayStation-style prompts (△ ○ × □, R2, OPTIONS, SHARE). Buttons write into
+// PlayStation-style prompts (× □ R2, ○ for menu BACK, OPTIONS, SHARE). Buttons write into
 // the same key map the keyboard uses, so every menu and gameplay path works
 // unchanged. The joystick is analog and read via `stick`.
 //
@@ -23,10 +23,9 @@ const MIN_PRESS_MS = 60;   // keep quick taps down long enough for the game loop
 const LAYOUT_KEY = 'naija5s.touchLayout.v1';
 const SIZE_MIN = 0.7, SIZE_MAX = 1.6, SIZE_STEP = 0.1;
 const OP_MIN = 0.3, OP_STEP = 0.1;
-const MOVABLE = ['cross', 'circle', 'square', 'triangle', 'r2'];
+const MOVABLE = ['cross', 'square', 'r2'];   // ○ (menu BACK) shares □'s spot
 
 const GLYPH = {
-  triangle: '<polygon points="12,3.5 21,19 3,19" />',
   circle:   '<circle cx="12" cy="12" r="7.5" />',
   cross:    '<path d="M5 5L19 19M19 5L5 19" />',
   square:   '<rect x="5" y="5" width="14" height="14" />',
@@ -51,15 +50,13 @@ const CSS = `
 .tc-btn svg{width:46%;height:46%;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
 .tc-cap{position:absolute;top:100%;margin-top:3px;font-size:6px;color:rgba(255,255,255,.75);text-shadow:0 1px 2px #000;white-space:nowrap}
 
-#tc-pad{position:absolute;width:0;height:0;right:calc(var(--b)*1.4 + 28px + env(safe-area-inset-right));bottom:calc(var(--b)*1.5 + 26px + env(safe-area-inset-bottom))}
+#tc-pad{position:absolute;width:0;height:0;right:calc(var(--b)*0.6 + 40px + env(safe-area-inset-right));bottom:calc(var(--b)*0.6 + 44px + env(safe-area-inset-bottom))}
 .tc-face{width:var(--b);height:var(--b);border-radius:50%}
-#tc-pad #tc-triangle{left:0;top:calc(var(--d)*-1)}
-#tc-pad #tc-circle{left:var(--d);top:0}
-#tc-pad #tc-cross{left:0;top:var(--d)}
-#tc-pad #tc-square{left:calc(var(--d)*-1);top:0}
-#tc-pad #tc-r2{left:calc(var(--b)*1.2);top:calc(var(--b)*-1.45)}
+#tc-pad #tc-cross{left:0;top:0}
+#tc-pad #tc-square,#tc-pad #tc-circle{left:calc(var(--b)*-1.35);top:calc(var(--b)*0.2)}
+#tc-pad #tc-r2{left:calc(var(--b)*0.1);top:calc(var(--b)*-1.35)}
+#tc.editing #tc-circle{display:none !important}
 #tc-cross{width:calc(var(--b)*1.15);height:calc(var(--b)*1.15)}
-#tc-triangle svg{stroke:#3fdcb0}
 #tc-circle svg{stroke:#ff5f6f}
 #tc-cross svg{stroke:#7fa9ff}
 #tc-square svg{stroke:#f08ad2}
@@ -92,17 +89,25 @@ const CSS = `
 `;
 
 // id, glyph/label, key code per mode, caption per mode ({play, menu, paused})
+// In a match the buttons are context-sensitive (like FC Mobile's attack/defend
+// sets), so only × □ R2 are needed. State: 'mine' (we have the ball),
+// 'loose', 'theirs' (they have it); plus 'menu' and 'paused'.
+const PLAY = ['mine', 'loose', 'theirs'];
 const BUTTONS = [
-  { id: 'cross',    glyph: 'cross',    face: true, code: { play: 'Space', menu: 'Space', paused: null },
-    cap: { play: 'SHOOT', menu: 'OK' } },
-  { id: 'circle',   glyph: 'circle',   face: true, code: { play: 'KeyC', menu: 'Escape', paused: null },
-    cap: { play: 'TACKLE', menu: 'BACK' } },
-  { id: 'square',   glyph: 'square',   face: true, code: { play: 'KeyE' }, cap: { play: 'PASS' } },
-  { id: 'triangle', glyph: 'triangle', face: true, code: { play: 'Tab' },  cap: { play: 'SWITCH' } },
-  { id: 'r2',       label: 'R2',       code: { play: 'ShiftLeft' }, cap: { play: 'SPRINT' } },
-  { id: 'options',  label: 'OPTIONS',  pill: true, code: { play: 'Escape', paused: 'Escape' },
-    cap: { play: 'PAUSE', paused: 'RESUME' } },
-  { id: 'share',    label: 'SHARE',    pill: true, code: { paused: 'Backspace' }, cap: { paused: 'QUIT' } },
+  { id: 'cross',  glyph: 'cross',  face: true,
+    code: { mine: 'Space', loose: 'Space', theirs: 'KeyC', menu: 'Space' },
+    cap:  { mine: 'SHOOT', loose: 'SHOOT', theirs: 'TACKLE', menu: 'OK' } },
+  { id: 'square', glyph: 'square', face: true,
+    code: { mine: 'KeyE', loose: 'Tab', theirs: 'Tab' },
+    cap:  { mine: 'PASS', loose: 'SWITCH', theirs: 'SWITCH' } },
+  { id: 'circle', glyph: 'circle', face: true, code: { menu: 'Escape' }, cap: { menu: 'BACK' } },
+  { id: 'r2',     label: 'R2',
+    code: { mine: 'ShiftLeft', loose: 'ShiftLeft', theirs: 'ShiftLeft' },
+    cap:  { mine: 'SPRINT', loose: 'SPRINT', theirs: 'SPRINT' } },
+  { id: 'options', label: 'OPTIONS', pill: true,
+    code: { mine: 'Escape', loose: 'Escape', theirs: 'Escape', paused: 'Escape' },
+    cap:  { mine: 'PAUSE', loose: 'PAUSE', theirs: 'PAUSE', paused: 'RESUME' } },
+  { id: 'share',  label: 'SHARE', pill: true, code: { paused: 'Backspace' }, cap: { paused: 'QUIT' } },
 ];
 
 let mode = 'menu';
@@ -188,7 +193,7 @@ export function initTouchControls(K, onFirstTouch) {
     b.addEventListener('pointerup', release);
     b.addEventListener('pointercancel', release);
     b.addEventListener('lostpointercapture', release);
-    (MOVABLE.includes(def.id) ? pad : root).appendChild(b);
+    (def.face || def.id === 'r2' ? pad : root).appendChild(b);
     btnEls[def.id] = { el: b, cap, def };
     if (MOVABLE.includes(def.id)) makeDraggable(b, def.id);
   }
@@ -262,10 +267,11 @@ export function initTouchControls(K, onFirstTouch) {
   zone.addEventListener('pointercancel', end);
 }
 
-// mode: 'menu' | 'play' | 'paused' — shows only the buttons that do something.
-export function setTouchMode(m) {
-  if (m === mode) return;
-  mode = m;
+// m: 'menu' | 'play' | 'paused'; ctx (in a match): { mine, theirs } ball possession
+export function setTouchMode(m, ctx) {
+  const next = m === 'play' ? (ctx?.mine ? 'mine' : ctx?.theirs ? 'theirs' : 'loose') : m;
+  if (next === mode) return;
+  mode = next;
   applyMode();
 }
 
@@ -274,9 +280,9 @@ function applyMode() {
   root.dataset.mode = mode;
   for (const { el, cap, def } of Object.values(btnEls)) {
     el.classList.toggle('hide', !def.code[mode]);
-    cap.textContent = (editing ? def.cap.play : def.cap[mode]) ?? '';
+    cap.textContent = (editing ? def.cap.mine : def.cap[mode]) ?? '';
   }
-  root.querySelector('#tc-layout')?.classList.toggle('hide', mode === 'play');
+  root.querySelector('#tc-layout')?.classList.toggle('hide', PLAY.includes(mode));
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -299,8 +305,8 @@ function snapshotLayout() {
 function applyLayout() {
   if (!root) return;
   root.style.setProperty('--op', layout.opacity ?? 1);
-  for (const id of MOVABLE) {
-    const el = btnEls[id].el, c = layout.controls?.[id];
+  for (const id of [...MOVABLE, 'circle']) {
+    const el = btnEls[id].el, c = layout.controls?.[id === 'circle' ? 'square' : id];
     if (c) {
       if (el.parentNode !== root) root.appendChild(el);
       el.style.left = c.x * innerWidth + 'px';

@@ -595,6 +595,17 @@ export const BALANCE = {
     possessionGrace:     36,    // frames a player who just won the ball can't be tackled
   },
 
+  // ── Passing (human and AI) ────────────────────────────────────────────────
+  pass: {
+    arrivalSpeed:      3.0,   // ball speed (px/frame) when it reaches the receiver
+    minSpeed:          4.5,
+    maxSpeed:          8.0,
+    interceptSpeed:   1.1,   // px/frame an opponent is assumed to close in while the ball travels
+    receiveBonus:        5,   // extra pickup radius for the intended receiver
+    maxReceiveFrames:  110,   // receiver stops chasing after this long
+    shieldEndSpeed:    2.2,   // charged shots can be picked up by outfield players below this speed
+  },
+
   // ── CPU behaviour (applies to every AI player, both teams) ───────────────
   cpu: {
     reactionDelay:     18,    // frames before AI presses a player who just got the ball
