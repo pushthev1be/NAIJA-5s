@@ -13,7 +13,7 @@ export const CANVAS = {
 
   // Touch devices: zoom so one logical px is at least this many CSS px on screen
   // (players ~30% bigger on a phone), capped at mobileZoomMax. The camera then
-  // follows the ball; a radar shows the whole pitch. Desktop is unaffected.
+  // follows the ball. Desktop is unaffected.
   mobileMinScale: 1.3,
   mobileZoomMax:  1.6,
   cameraFollow:   0.08,   // fraction of the gap to the target closed per frame

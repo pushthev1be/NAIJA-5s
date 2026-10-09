@@ -2055,7 +2055,7 @@ function drawBallTrail(){
   });
 }
 
-// ── CAMERA & RADAR ───────────────────────────────────────────────────────────
+// ── CAMERA ────────────────────────────────────────────────────────────────────
 function updateCamera(dt){
   // Look slightly ahead of the ball's travel so passes and shots stay in view
   const tx=ball.x+ball.vx*CANVAS.cameraLead, ty=ball.y+ball.vy*CANVAS.cameraLead;
@@ -2070,28 +2070,6 @@ function applyCamera(){
   const z=camZ*(1+camPunch);
   const sx=shakeMag?Math.round((Math.random()-0.5)*2*shakeMag):0, sy=shakeMag?Math.round((Math.random()-0.5)*2*shakeMag):0;
   cx.translate(VW/2+sx,VH/2+sy); cx.scale(z,z); cx.translate(-camX,-camY);
-}
-function drawRadar(){
-  if(VW/camZ>=LW-1&&VH/camZ>=LH-1)return;   // whole pitch already visible
-  const rw=120, rh=rw*PH/PW, rx=MX-rw/2, ry=LH-rh-16;
-  const sx=x=>rx+(x-PX)/PW*rw, sy=y=>ry+(y-PY)/PH*rh;
-  cx.save();
-  cx.fillStyle='rgba(0,0,0,0.45)'; cx.fillRect(rx-2,ry-2,rw+4,rh+4);
-  cx.strokeStyle='rgba(255,255,255,0.35)'; cx.lineWidth=0.75;
-  cx.strokeRect(rx,ry,rw,rh);
-  cx.beginPath(); cx.moveTo(rx+rw/2,ry); cx.lineTo(rx+rw/2,ry+rh); cx.stroke();
-  // visible area
-  const z=camZ*(1+camPunch), hw=Math.min(LW,VW/z)/2, hh=Math.min(LH,VH/z)/2;
-  cx.strokeStyle='rgba(253,224,71,0.6)';
-  cx.strokeRect(sx(camX-hw),sy(camY-hh),hw*2/PW*rw,hh*2/PH*rh);
-  for(const p of [...home,...away]){
-    cx.fillStyle=p.team==='home'?COL.home.shirt:COL.away.shirt;
-    const r=p.controlled?2.4:1.6;
-    cx.beginPath(); cx.arc(sx(p.x),sy(p.y),r,0,Math.PI*2); cx.fill();
-    if(p.controlled){cx.strokeStyle='#fff';cx.lineWidth=0.75;cx.stroke();}
-  }
-  cx.fillStyle='#fff'; cx.fillRect(sx(ball.x)-1,sy(ball.y)-1,2,2);
-  cx.restore();
 }
 
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────────
@@ -2790,7 +2768,6 @@ function loop(ts){
   drawConfetti();
   drawGoalBanner();
   if(lightningT>0){cx.fillStyle=`rgba(235,240,255,${(lightningT%6>2?0.45:0.15)*lightningT/12})`;cx.fillRect(-VOX,-VOY,VW,VH);}
-  drawRadar();
 
   // Weather is drawn stretched over the whole view
   cx.save(); cx.translate(-VOX,-VOY); cx.scale(VW/LW,VH/LH);
