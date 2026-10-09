@@ -640,6 +640,22 @@ export const BALANCE = {
     fatigueMult:         0.82,  // speed fraction when fatigued
   },
 
+  // ── Visual effects ("juice") ─────────────────────────────────────────────
+  fx: {
+    goalHitStop:      6,     // frames the action freezes when a goal goes in
+    goalShake:        4.5,   // px camera shake on a goal
+    goalPunch:        0.22,  // extra camera zoom on a goal (fraction)
+    fireballHitStop:  4,     // freeze frames when a fireball is struck
+    fireballShake:    2.5,
+    tackleShake:      1.2,
+    postShake:        1.5,   // ball hitting the frame / boards hard
+    confetti:         110,   // confetti pieces on a goal
+    wearAlpha:        0.05,  // pitch wear per footstep (builds up over a match)
+    puddleMax:        16,    // rain puddles on the pitch
+    lightningChance:  0.0012,// per frame while raining
+    weatherFadeFrames:150,   // rain/snow fade in after a weather change
+  },
+
   // ── Goal proximity ────────────────────────────────────────────────────────
   goalProximity: {
     glowRange:     110,  // ball within this px of goal line triggers glow

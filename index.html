@@ -257,7 +257,8 @@ function spawnSparks(x,y,col='#fde047',n=8){
 function spawnBounce(x,y,str){
   for(let i=0;i<Math.floor(str*2.5+1);i++){
     const a=-Math.PI/2+(Math.random()-0.5)*2;
-    particles.push({x,y,vx:Math.cos(a)*str*0.35,vy:Math.sin(a)*str*0.4,life:0,max:9+Math.random()*8,r:1,col:`hsl(32,20%,${60+Math.random()*15}%)`});
+    const col=weatherMode==='snow'?'#eef4ff':weatherMode==='rain'?'rgba(140,188,255,0.8)':(Math.random()<0.7?`hsl(${100+Math.random()*25},45%,${30+Math.random()*15}%)`:`hsl(32,25%,${45+Math.random()*15}%)`);
+    particles.push({x,y,vx:Math.cos(a)*str*0.35,vy:Math.sin(a)*str*0.4,life:0,max:9+Math.random()*8,r:1,col});
   }
 }
 function spawnSplash(x,y){
@@ -282,23 +283,21 @@ function drawParticles(){
 }
 
 // ── CROWD & ATMOSPHERE ────────────────────────────────────────────────────────
-const CROWD_BANNER_HOME=['NAIJA!','EJE O!','COME ON','SUPER!','NO STOP','GREEN!!!'];
-const CROWD_BANNER_AWAY=['AWAY FC','WE MOVE','TOP BOYS','RUBBISH','NA WE BE','VAMOS!'];
-let crowdMembers=[], crowdBanners=[];
+let crowdMembers=[];
 
 function buildCrowd(){
-  crowdMembers=[]; crowdBanners=[];
+  crowdMembers=[];
   let si=0;
   const rnd=()=>{si++;return Math.abs(Math.sin(si*127.1+si*0.5)*43758.5453%1);};
   const addM=(x,y,team)=>crowdMembers.push({x,y,team,ph:rnd()*Math.PI*2,spd:0.7+rnd()*1.1});
 
   // Top stand (3 rows above pitch)
-  for(let row=0;row<3;row++){
+  for(let row=2;row<3;row++){            // rows 0-1 are behind the LED boards
     const y=PY-3-row*4; if(y<1)continue;
     for(let x=PX+2;x<PX+PW-2;x+=5)addM(x,y,x<MX?'home':'away');
   }
   // Bottom stand (3 rows below pitch)
-  for(let row=0;row<3;row++){
+  for(let row=2;row<3;row++){
     const y=PY+PH+3+row*4; if(y>LH-1)continue;
     for(let x=PX+2;x<PX+PW-2;x+=5)addM(x,y,x<MX?'home':'away');
   }
@@ -319,15 +318,7 @@ function buildCrowd(){
     }
   }
 
-  // Banners — every ~88px across top and bottom stands
-  let bi=0;
-  for(let x=PX+44;x<PX+PW-24;x+=88,bi++){
-    const team=x<MX?'home':'away';
-    const tA=CROWD_BANNER_HOME, tB=CROWD_BANNER_AWAY;
-    crowdBanners.push({x, y:PY-5,      text:(team==='home'?tA:tB)[bi%6], team, ph:rnd()*Math.PI*2});
-    crowdBanners.push({x:PX+PW-44-(x-PX-44), y:PY+PH+5,
-      text:(team==='home'?tB:tA)[bi%6], team:team==='home'?'away':'home', ph:rnd()*Math.PI*2});
-  }
+  // Top/bottom fabric banners were replaced by the LED boards (drawBoards)
 }
 
 function drawCrowd(){
@@ -350,16 +341,6 @@ function drawCrowd(){
     cx.fillRect(px-1,py+1,2,2); // body shadow
   }
 
-  cx.font='5px monospace'; cx.textAlign='center';
-  for(const b of crowdBanners){
-    const flap=Math.sin(t*3.2+b.ph)*(cel>0?2.8:0.9);
-    const by=Math.round(b.y+flap);
-    const bw=b.text.length*3+6;
-    cx.fillStyle=b.team==='home'?'#14532d':'#7f1d1d';
-    cx.fillRect(Math.round(b.x-bw/2),by-3,bw,7);
-    cx.fillStyle=b.team==='home'?'#86efac':'#fca5a5';
-    cx.fillText(b.text,Math.round(b.x),by+2);
-  }
   cx.restore();
 }
 
@@ -537,6 +518,8 @@ function drawPlayer(x,y,tc,frame,state,dir,alpha,tall=false){
     cx.globalAlpha=1;return;
   }
 
+  // stride bob: body lifts on passing frames (shadow stays on the ground)
+  if(state==='run'&&(frame===1||frame===3))y-=Math.round(SP);
   const flx=FL_X[frame]*d, fly=FL_Y[frame];
   const blx=BL_X[frame]*d, bly=BL_Y[frame];
   const armSwing=[0,1,0,-1][frame];
@@ -559,8 +542,12 @@ function drawBall(x,y,z,spin){
   const ss=Math.max(0.3,1-z*0.017);
   cx.fillStyle=`rgba(0,0,0,${0.3*ss})`;
   cx.beginPath();cx.ellipse(x,y,(5+z*0.18)*ss,(2.5+z*0.07)*ss,0,0,Math.PI*2);cx.fill();
-  cx.fillStyle='#FFD700';cx.beginPath();cx.arc(x,by,BRAD,0,Math.PI*2);cx.fill();
-  cx.save();cx.translate(x,by);cx.rotate(spin);
+  // squash on bounce, stretch along travel when fast
+  const sq=ball.squash||0, vsp=ball.owner?0:Math.hypot(ball.vx,ball.vy);
+  const st=Math.min(0.35,Math.max(0,(vsp-3)*0.06)), ang=Math.atan2(ball.vy,ball.vx);
+  cx.save();cx.translate(x,by+sq*BRAD*0.6);cx.scale(1+sq,1-sq);cx.rotate(ang);cx.scale(1+st,1-st*0.5);
+  cx.fillStyle='#FFD700';cx.beginPath();cx.arc(0,0,BRAD,0,Math.PI*2);cx.fill();
+  cx.rotate(spin-ang);
   cx.fillStyle='#7a4700';cx.fillRect(-1,-1,2,2);
   cx.fillStyle='#a86200';cx.fillRect(2,-1,1,1);cx.fillRect(-BRAD+1,0,1,1);
   cx.restore();
@@ -799,6 +786,7 @@ function initMatch(hDef=matchHomeDef,aDef=matchAwayDef){
   home=teams.h; away=teams.a;
   ball=mkBall();
   resetPossession();
+  resetFx();
   // Control the ST (or last outfield player if no ST)
   ctrlIdx=home.findIndex(p=>p.role==='st');
   if(ctrlIdx<0)ctrlIdx=home.length-1;
@@ -941,12 +929,13 @@ function resetPossession(){
 const inGrace=()=>possT<BALANCE.duel.possessionGrace;
 function rollTackle(p,carrier,bonus=0){
   const D=BALANCE.duel, ST=BALANCE.stamina;
+  stampStreak(p.x,p.y+8,carrier.x,carrier.y+8);
   p.stamina=Math.max(0,p.stamina-ST.tackleCost);
   const tStars=p.starLevels?.steal??p.overallStars??1;
   let ch=D.baseChance+D.starBonus*(tStars-(carrier.overallStars??1))+bonus;
   if(carrier.stamina<ST.fatigueBelow)ch+=D.tiredCarrierBonus;
   if(p.stamina<ST.fatigueBelow)ch-=D.tiredTacklerPenalty;
-  if(Math.random()<clamp(ch,D.min,D.max))return true;
+  if(Math.random()<clamp(ch,D.min,D.max)){addShake(FX.tackleShake);return true;}
   p.tackleCD=D.missCooldown; p.missT=D.missSlowFrames;
   showCallout('MISSED!',p.x,p.y-22,30);
   return false;
@@ -1217,7 +1206,7 @@ function aiUpdate(players,opps,dt){
           if (psStars >= 3 && Math.random() < CPU.fireballChance) {
               ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
               ball.bypassesKeeper = true;
-              showCallout('FIREBALL! 🔥', p.x, p.y-28);
+              showCallout('FIREBALL! 🔥', p.x, p.y-28); addShake(FX.fireballShake);
           } else {
               ball.onFire = false;
               ball.bypassesKeeper = false;
@@ -1242,7 +1231,7 @@ function aiUpdate(players,opps,dt){
             if (psStars >= 3 && Math.random() < CPU.fireballChance) {
                 ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
                 ball.bypassesKeeper = true;
-                showCallout('FIREBALL! 🔥', p.x, p.y-28);
+                showCallout('FIREBALL! 🔥', p.x, p.y-28); addShake(FX.fireballShake); addShake(FX.fireballShake);
             } else {
                 ball.onFire = false;
                 ball.bypassesKeeper = false;
@@ -1411,10 +1400,12 @@ function updateWeather(dt){
   weatherTimer+=dt;
   if(weatherTimer>=BALANCE.weather.cycleDuration){
     weatherTimer=0;
-    weatherMode=weatherMode==='rain'?'snow':'rain';
+    weatherMode=weatherMode==='rain'?'snow':'rain'; weatherFade=0;
     if(weatherMode==='rain'){initRainStreaks();snowPiles.length=0;}
     else initSnowFlakes();
   }
+  weatherFade=Math.min(1,weatherFade+dt/FX.weatherFadeFrames);
+  updatePuddles(dt);
   if(weatherMode==='snow'){
     const S=BALANCE.weather.snow;
     if(snowPiles.length<S.pileMaxCount&&Math.random()<S.pileSpawnRate*dt)
@@ -1460,10 +1451,18 @@ function updateBall(dt){
   // Extra rolling resistance when ball is on the ground
   if(ball.z<0.5){const gf=Math.pow(BP.groundFriction,dt);ball.vx*=gf;ball.vy*=gf;}
 
+  // Puddles: the rolling ball splashes and drags through them
+  if(ball.z<0.5&&puddles.length){
+    const sp=Math.hypot(ball.vx,ball.vy);
+    if(sp>0.6&&puddleAt(ball.x,ball.y)){
+      const k=Math.pow(0.965,dt); ball.vx*=k; ball.vy*=k;
+      if(Math.random()<0.25*dt)spawnSplash(ball.x,ball.y);
+    }
+  }
   if(ball.z<0){
     ball.z=0;
     const b=Math.abs(ball.vz);
-    if(b>BP.minBounceSpeed){ball.vz=-b*(BP.groundBounceCoeff+bounceMod);spawnBounce(ball.x,ball.y,b);if(weatherMode==='rain'&&b>0.5)spawnSplash(ball.x,ball.y);if(b>1.6)rumbleBounce();}
+    if(b>BP.minBounceSpeed){ball.vz=-b*(BP.groundBounceCoeff+bounceMod);ball.squash=Math.min(0.45,b*0.2);spawnBounce(ball.x,ball.y,b);if(weatherMode==='rain'&&b>0.5)spawnSplash(ball.x,ball.y);if(b>1.6)rumbleBounce();}
     else ball.vz=0;
   }
 
@@ -1524,8 +1523,8 @@ function goalScore(team){
   score[team]++;
   phase='goal'; goalFlash=90;
   ball.vx*=0.28; ball.vy=(Math.random()-0.5)*2.2; ball.vz=2.2+Math.random()*1.8;
-  showCallout(team===0?'NAIJA GOAL! 🔥':'AWAY GOAL!',MX,MY-38,100);
-  spawnSparks(MX,MY,'kick',22);
+  startGoalFx(team);
+  spawnSparks(ball.x,ball.y,'kick',22);
   rumbleGoal();
   if(lastShotPower) sndNetBoom(); else sndGoal();
   lastShotPower=false;
@@ -1659,6 +1658,7 @@ function updateControlled(p,inp,dt,cs=ctrl1){
         ball.bypassesKeeper = true;
         p.stamina = Math.max(0, p.stamina - 35);
         showCallout('FIREBALL! 🔥', p.x, p.y-28);
+        addHitStop(FX.fireballHitStop); addShake(FX.fireballShake);
       } else if(power >= 0.5) {
         ball.onFire = false;
         ball.isCurveShot = true;
@@ -1827,7 +1827,8 @@ function drawUI(){
   cx.fillText(`${weatherLabel}${cpuLabel}${gpName?' 🎮'+gpName.slice(0,18):''}${p2Label}`,PX+PW,LH-8);
   // Goal flash
   if(goalFlash>0){
-    cx.fillStyle=`rgba(255,200,0,${goalFlash/120})`;cx.fillRect(-VOX,-VOY,VW,VH);goalFlash=Math.max(0,goalFlash-2);
+    if(goalFlash>78){cx.fillStyle=`rgba(255,255,240,${(goalFlash-78)/12*0.55})`;cx.fillRect(-VOX,-VOY,VW,VH);}
+    goalFlash=Math.max(0,goalFlash-2);
   }
   // Kickoff banner
   if(phase==='kickoff'){
@@ -1856,6 +1857,204 @@ function drawUI(){
   }
 }
 
+
+// ── FX: shake, hit-stop, goal celebration, boards, pitch wear, puddles ──────
+// Game-feel layer. Tunables live in BALANCE.fx.
+const FX=BALANCE.fx;
+let fxT=0, shakeMag=0, hitStop=0, camPunch=0, punchT=999, lightningT=0, weatherFade=1;
+let goalBanner=null, netFx=null;
+const confetti=[], puddles=[], ballTrail=[];
+const wearC=document.createElement('canvas'); wearC.width=LW; wearC.height=LH;
+const wg=wearC.getContext('2d');
+
+function addShake(m){ shakeMag=Math.max(shakeMag,m); }
+function addHitStop(f){ hitStop=Math.max(hitStop,f); }
+function resetFx(){
+  wg.clearRect(0,0,LW,LH); puddles.length=0; confetti.length=0; ballTrail.length=0;
+  goalBanner=null; netFx=null; shakeMag=0; hitStop=0; camPunch=0; punchT=999; lightningT=0;
+}
+function tickFx(dt){
+  fxT+=dt;
+  shakeMag*=Math.pow(0.82,dt); if(shakeMag<0.15)shakeMag=0;
+  if(hitStop>0)hitStop=Math.max(0,hitStop-dt);
+  // camera punch: quick in, hold, ease out
+  punchT+=dt;
+  camPunch=punchT<8?FX.goalPunch*punchT/8:punchT<50?FX.goalPunch:punchT<90?FX.goalPunch*(1-(punchT-50)/40):0;
+  if(ball)ball.squash=(ball.squash||0)*Math.pow(0.78,dt);
+  if(goalBanner){goalBanner.t+=dt;if(goalBanner.t>125)goalBanner=null;}
+  if(netFx){netFx.t+=dt;if(netFx.t>70)netFx=null;}
+  if(lightningT>0)lightningT=Math.max(0,lightningT-dt);
+  for(const c of confetti){
+    c.life+=dt; c.vy=Math.min(c.vy+0.035*dt,1.6); c.vx*=Math.pow(0.99,dt);
+    c.x+=(c.vx+Math.sin(c.life*0.12+c.ph)*0.45)*dt; c.y+=c.vy*dt; c.rot+=c.vr*dt;
+  }
+  confetti.splice(0,confetti.length,...confetti.filter(c=>c.life<c.max&&c.y<LH+VOY+10));
+}
+
+// ── Goal celebration ──
+function startGoalFx(team){
+  const side=team===0?1:-1;
+  addHitStop(FX.goalHitStop); addShake(FX.goalShake); punchT=0;
+  netFx={side,by:clamp(ball.y,MY-GH/2+4,MY+GH/2-4),t:0};
+  const scorer=lastKicker&&lastKicker.team===(team===0?'home':'away')?lastKicker.name:null;
+  goalBanner={t:0,team:team===0?'home':'away',sub:scorer?scorer.toUpperCase():(team===0?'NAIJA':'AWAY')};
+  const cols=[COL[goalBanner.team].shirt,'#FFB800','#ffffff','#00A651'];
+  for(let i=0;i<FX.confetti;i++){
+    confetti.push({x:-VOX+Math.random()*VW,y:-VOY-10-Math.random()*60,vx:(Math.random()-0.5)*1.6,vy:0.3+Math.random()*1.2,
+      rot:Math.random()*6,vr:(Math.random()-0.5)*0.4,w:2+Math.random()*2.5,h:1+Math.random()*1.5,
+      col:cols[i%cols.length],ph:Math.random()*6,life:0,max:150+Math.random()*60});
+  }
+}
+const easeOutBack=t=>{const c=1.9;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2);};
+function drawGoalBanner(){
+  if(!goalBanner)return;
+  const{t}=goalBanner, txt='GOOOAL!';
+  const out=t>105?Math.min(1,(t-105)/20):0;
+  cx.save();
+  cx.font="900 46px 'Orbitron',monospace"; cx.textAlign='left'; cx.textBaseline='middle';
+  const total=cx.measureText(txt).width;
+  let x=MX-total/2*(1+out*0.4);
+  const y=MY-34;
+  cx.globalAlpha=1-out;
+  for(let i=0;i<txt.length;i++){
+    const ch=txt[i], w=cx.measureText(ch).width*(1+out*0.4);
+    const lt=t-i*3;
+    if(lt>0){
+      const k=Math.min(1,lt/14), sc=(lt<14?0.2+0.8*easeOutBack(k):1)*(1+out*0.4);
+      const wob=Math.sin((t+i*4)*0.25)*1.5*(1-out);
+      cx.save(); cx.translate(x+w/2,y+wob-(1-Math.min(1,lt/8))*30); cx.scale(sc,sc);
+      cx.shadowColor='#FFB800'; cx.shadowBlur=14;
+      cx.lineWidth=5; cx.strokeStyle='#000'; cx.strokeText(ch,-w/2/(1+out*0.4),0);
+      cx.shadowBlur=0; cx.fillStyle=i%2?'#FFB800':COL[goalBanner.team].shirt; cx.fillText(ch,-w/2/(1+out*0.4),0);
+      cx.restore();
+    }
+    x+=w;
+  }
+  if(t>22){
+    cx.globalAlpha=Math.min(1,(t-22)/10)*(1-out);
+    cx.font="10px 'Press Start 2P',monospace"; cx.textAlign='center';
+    cx.lineWidth=4; cx.strokeStyle='#000'; cx.strokeText('⚽ '+goalBanner.sub,MX,y+36);
+    cx.fillStyle='#fff'; cx.fillText('⚽ '+goalBanner.sub,MX,y+36);
+  }
+  cx.restore();
+}
+function drawConfetti(){
+  for(const c of confetti){
+    cx.save(); cx.globalAlpha=Math.min(1,(c.max-c.life)/30);
+    cx.translate(c.x,c.y); cx.rotate(c.rot); cx.scale(1,Math.abs(Math.cos(c.life*0.15+c.ph)));
+    cx.fillStyle=c.col; cx.fillRect(-c.w/2,-c.h/2,c.w,c.h); cx.restore();
+  }
+}
+// Net bulges where the ball hit it, then settles
+function drawNetFx(){
+  if(!netFx)return;
+  const{side,by,t}=netFx, x0=side>0?PX+PW:PX, x1=x0+side*GD, top=MY-GH/2, bot=MY+GH/2;
+  const amp=7*Math.exp(-t/22)*Math.cos(t*0.35);
+  const bulge=(y,f)=>side*amp*f*Math.exp(-(((y-by)/20)**2));
+  cx.save();
+  cx.fillStyle='#1a1a2e'; cx.fillRect(Math.min(x0,x1),top,GD,GH);
+  cx.strokeStyle='rgba(255,255,255,0.28)'; cx.lineWidth=0.6;
+  for(let ny=top;ny<=bot;ny+=7){
+    cx.beginPath();
+    for(let k=0;k<=6;k++){const f=k/6, x=x0+(x1-x0)*f;cx[k?'lineTo':'moveTo'](x+bulge(ny,f),ny);}
+    cx.stroke();
+  }
+  for(let k=0;k<=Math.floor(GD/7);k++){
+    const f=(k*7)/GD, x=x0+side*k*7;
+    cx.beginPath();
+    for(let ny=top;ny<=bot;ny+=3)cx[ny===top?'moveTo':'lineTo'](x+bulge(ny,f),ny);
+    cx.stroke();
+  }
+  cx.strokeStyle='#fff'; cx.lineWidth=2; cx.strokeRect(Math.min(x0,x1),top,GD,GH);
+  cx.restore();
+}
+
+// ── LED advertising boards along both touchlines ──
+const BOARD_ADS=['NAIJA 5s','SUPER LEAGUE','JOLLOF ★ HOT','EJE O!','SUYA SPOT','PLAY ON MOBILE',
+  'GREEN WHITE GREEN','OKADA XPRESS','NO STOP!','LAGOS · ABUJA · KANO','PUFF PUFF ★ FRESH','ZOBO COLD'];
+const BOARD_COLS=['#FFB800','#00c960','#F0EDE0','#ff5f6f','#7fa9ff'];
+const ledPattern=(()=>{const c=document.createElement('canvas');c.width=2;c.height=2;const g=c.getContext('2d');
+  g.fillStyle='rgba(0,0,0,0.38)';g.fillRect(1,0,1,2);g.fillRect(0,1,2,1);return c;})();
+function drawBoards(){
+  const n=6, gap=2, pw=(PW-gap*(n-1))/n, H=7;
+  const goalOn=goalFlash>0, strobe=Math.floor(fxT/6)%2;
+  const ads=[...BOARD_ADS,matchHomeDef?.name,matchAwayDef?.name].filter(Boolean);
+  cx.save();
+  cx.font='bold 6px monospace'; cx.textBaseline='middle'; cx.textAlign='left';
+  for(const [side,y0] of [[0,PY-9],[1,PY+PH+2]]){
+    for(let i=0;i<n;i++){
+      const x0=PX+i*(pw+gap);
+      cx.fillStyle='#070b07'; cx.fillRect(x0,y0,pw,H);
+      cx.save(); cx.beginPath(); cx.rect(x0+1,y0+1,pw-2,H-2); cx.clip();
+      let msg, col;
+      if(goalOn){ msg='GOAL!!!  GOAL!!!'; col=strobe?'#FFB800':(goalBanner?COL[goalBanner.team].shirt:'#fff'); }
+      else { const k=Math.floor(fxT/420)+i+side*3; msg=ads[k%ads.length]; col=BOARD_COLS[(k+i)%BOARD_COLS.length]; }
+      const tw=cx.measureText(msg).width+24;
+      const off=(fxT*0.35+i*31+side*17)%tw;
+      cx.fillStyle=col; cx.shadowColor=col; cx.shadowBlur=3;
+      for(let x=x0+pw-off-tw*Math.ceil(pw/tw);x<x0+pw;x+=tw)cx.fillText(msg,Math.round(x),y0+H/2+0.5);
+      cx.restore();
+    }
+    cx.fillStyle=cx.createPattern(ledPattern,'repeat'); cx.fillRect(PX,y0,PW,H);
+  }
+  cx.restore();
+}
+
+// ── Pitch wear: footsteps and tackles slowly scuff the grass ──
+function wearColor(a){
+  return weatherMode==='rain'?`rgba(78,54,30,${a*1.5})`:weatherMode==='snow'?`rgba(226,236,250,${a*1.3})`:`rgba(30,54,24,${a})`;
+}
+function stampWear(x,y,r,a){
+  if(x<PX||x>PX+PW||y<PY||y>PY+PH)return;
+  wg.fillStyle=wearColor(a); wg.beginPath(); wg.ellipse(x,y,r*1.4,r*0.8,0,0,Math.PI*2); wg.fill();
+}
+function stampStreak(x0,y0,x1,y1){
+  for(let k=0;k<=6;k++){const f=k/6;stampWear(x0+(x1-x0)*f,y0+(y1-y0)*f,2.2,FX.wearAlpha*2.4);}
+}
+function stepFx(p){
+  // called when a running foot lands: turf kick + wear
+  const col=weatherMode==='rain'?'rgba(140,188,255,0.75)':weatherMode==='snow'?'#eef4ff':`hsl(${100+Math.random()*25},45%,${28+Math.random()*14}%)`;
+  if(Math.random()<0.55)particles.push({x:p.x-p.dir*2,y:p.y+8,vx:-p.dir*(0.3+Math.random()*0.6),vy:-0.6-Math.random()*0.6,life:0,max:10+Math.random()*6,r:0.7,col});
+  if(Math.random()<0.4)stampWear(p.x,p.y+8,1.6,FX.wearAlpha);
+}
+
+// ── Rain puddles ──
+function updatePuddles(dt){
+  if(weatherMode!=='rain'){puddles.length=0;return;}
+  if(puddles.length<FX.puddleMax&&Math.random()<0.004*dt)
+    puddles.push({x:PX+30+Math.random()*(PW-60),y:PY+20+Math.random()*(PH-40),r:1,maxR:5+Math.random()*8});
+  for(const pd of puddles)if(pd.r<pd.maxR)pd.r+=0.01*dt*weatherFade;
+  if(Math.random()<0.06*dt&&puddles.length){const pd=puddles[Math.floor(Math.random()*puddles.length)];
+    spawnRing(pd.x+(Math.random()-0.5)*pd.r*2,pd.y-5+(Math.random()-0.5)*pd.r*0.6,'rgba(200,225,255,0.5)',3+Math.random()*3,0.6);}
+  if(Math.random()<FX.lightningChance*dt*weatherFade){lightningT=12;addShake(0.8);}
+}
+function puddleAt(x,y){
+  return puddles.find(pd=>((x-pd.x)/(pd.r*2))**2+((y-pd.y)/(pd.r*0.8))**2<1);
+}
+function drawPuddles(){
+  for(const pd of puddles){
+    cx.fillStyle='rgba(70,110,150,0.42)'; cx.beginPath(); cx.ellipse(pd.x,pd.y,pd.r*2,pd.r*0.8,0,0,Math.PI*2); cx.fill();
+    cx.strokeStyle='rgba(210,230,255,0.35)'; cx.lineWidth=0.6;
+    cx.beginPath(); cx.ellipse(pd.x-pd.r*0.4,pd.y-pd.r*0.15,pd.r*1.1,pd.r*0.3,0,Math.PI*1.1,Math.PI*1.9); cx.stroke();
+  }
+}
+
+// ── Ball motion trail for fast shots ──
+function updateBallTrail(){
+  const sp=Math.hypot(ball.vx,ball.vy);
+  if(!ball.owner&&sp>3.5)ballTrail.push({x:ball.x,y:ball.y-ball.z,sp});
+  else if(ballTrail.length)ballTrail.shift();
+  while(ballTrail.length>8)ballTrail.shift();
+}
+function drawBallTrail(){
+  const col=ball.onFire?'255,140,40':ball.isCurveShot?'110,170,255':'255,255,230';
+  ballTrail.forEach((b,i)=>{
+    const k=(i+1)/ballTrail.length;
+    cx.fillStyle=`rgba(${col},${0.35*k})`;
+    cx.beginPath(); cx.arc(b.x,b.y,BRAD*(0.45+0.5*k),0,Math.PI*2); cx.fill();
+  });
+}
+
 // ── CAMERA & RADAR ───────────────────────────────────────────────────────────
 function updateCamera(dt){
   // Look slightly ahead of the ball's travel so passes and shots stay in view
@@ -1863,12 +2062,14 @@ function updateCamera(dt){
   const k=1-Math.pow(1-CANVAS.cameraFollow,dt);
   camX+=(tx-camX)*k; camY+=(ty-camY)*k;
   // Keep the view inside the world; centre it on any axis where the view is bigger
-  const hw=VW/(2*camZ), hh=VH/(2*camZ);
+  const z=camZ*(1+camPunch), hw=VW/(2*z), hh=VH/(2*z);
   camX=hw*2>=LW?LW/2:clamp(camX,hw,LW-hw);
   camY=hh*2>=LH?LH/2:clamp(camY,hh,LH-hh);
 }
 function applyCamera(){
-  cx.translate(VW/2,VH/2); cx.scale(camZ,camZ); cx.translate(-camX,-camY);
+  const z=camZ*(1+camPunch);
+  const sx=shakeMag?Math.round((Math.random()-0.5)*2*shakeMag):0, sy=shakeMag?Math.round((Math.random()-0.5)*2*shakeMag):0;
+  cx.translate(VW/2+sx,VH/2+sy); cx.scale(z,z); cx.translate(-camX,-camY);
 }
 function drawRadar(){
   if(VW/camZ>=LW-1&&VH/camZ>=LH-1)return;   // whole pitch already visible
@@ -1880,7 +2081,7 @@ function drawRadar(){
   cx.strokeRect(rx,ry,rw,rh);
   cx.beginPath(); cx.moveTo(rx+rw/2,ry); cx.lineTo(rx+rw/2,ry+rh); cx.stroke();
   // visible area
-  const hw=Math.min(LW,VW/camZ)/2, hh=Math.min(LH,VH/camZ)/2;
+  const z=camZ*(1+camPunch), hw=Math.min(LW,VW/z)/2, hh=Math.min(LH,VH/z)/2;
   cx.strokeStyle='rgba(253,224,71,0.6)';
   cx.strokeRect(sx(camX-hw),sy(camY-hh),hw*2/PW*rw,hh*2/PH*rh);
   for(const p of [...home,...away]){
@@ -2285,7 +2486,8 @@ function loop(ts){
   if(slowMoTimer>0)slowMoTimer=Math.max(0,slowMoTimer-dt);
   const SM=BALANCE.slowMo;
   const slowFrac=slowMoTimer>0?slowMoTimer/SM.duration:0;
-  const physDt=dt*(slowFrac>0?lerp(1,SM.factor,slowFrac):1);
+  const physDt=hitStop>0?0:dt*(slowFrac>0?lerp(1,SM.factor,slowFrac):1);
+  tickFx(dt);
   updateCallouts(dt);
   if(commentaryCooldown>0)commentaryCooldown=Math.max(0,commentaryCooldown-dt);
   if(commentary){commentary.t+=dt;if(commentary.t>=commentary.maxT)commentary=null;}
@@ -2410,7 +2612,12 @@ function loop(ts){
   cx.fillStyle='#050A05'; cx.fillRect(0,0,VW,VH);
   cx.save();applyCamera();
   cx.drawImage(pitchBg,0,0);
+  cx.drawImage(wearC,0,0);
+  drawNetFx();
+  drawPuddles();
+  if(weatherFade>0&&weatherMode==='rain'){cx.fillStyle=`rgba(10,22,45,${0.12*weatherFade})`;cx.fillRect(PX,PY,PW,PH);}
   drawCrowd();
+  drawBoards();
   drawManagers();
 
   // ── Goal proximity glow ──────────────────────────────────────────────────
@@ -2446,6 +2653,7 @@ function loop(ts){
   if(slowFrac>0){cx.fillStyle=`rgba(20,0,50,${slowFrac*0.38})`;cx.fillRect(0,0,LW,LH);}
 
   drawParticles();
+  drawRings();
 
   // ghost trails
   for(const t of trails)drawPlayer(t.x,t.y,t.tc,t.frame,'run',t.dir,t.a);
@@ -2472,6 +2680,8 @@ function loop(ts){
     // GK gets distinct shirt + gloves via modified tc
     const drawTc=p.role==='gk'?{...tc,shirt:tc.gkShirt??tc.shirt,gloves:tc.gloves}:tc;
     drawPlayer(p.x+shimX,p.y,drawTc,p.frame,p.state,p.dir,p.feinted?0.7:1,p.role==='gk');
+    if(p.state==='run'&&p.frame!==p._lf&&(p.frame===0||p.frame===2)&&phase!=='kickoff')stepFx(p);
+    p._lf=p.frame;
     // Controlled indicator — small dot above player head instead of ground ring
     if(p.controlled){
       const ic=p.team==='home'?'#86efac':'#fca5a5';
@@ -2531,6 +2741,7 @@ function loop(ts){
     }
   }
 
+  updateBallTrail(); drawBallTrail();
   drawBall(ball.x,ball.y,ball.z,ball.spin);
 
   // Trajectory arc and charge bar — P1
@@ -2576,6 +2787,9 @@ function loop(ts){
   cx.translate(VOX,VOY);
   drawCommentary();
   drawUI();
+  drawConfetti();
+  drawGoalBanner();
+  if(lightningT>0){cx.fillStyle=`rgba(235,240,255,${(lightningT%6>2?0.45:0.15)*lightningT/12})`;cx.fillRect(-VOX,-VOY,VW,VH);}
   drawRadar();
 
   // Weather is drawn stretched over the whole view
@@ -2584,7 +2798,7 @@ function loop(ts){
   if(weatherMode==='rain'){
     const R=BALANCE.weather.rain;
     cx.save();cx.strokeStyle='rgba(180,200,255,0.28)';cx.lineWidth=1;
-    for(const s of rainStreaks){
+    for(const s of rainStreaks.slice(0,Math.ceil(rainStreaks.length*weatherFade))){
       s.y+=R.speedY; s.x+=R.speedX;
       if(s.y>LH){s.y=-s.len;s.x=Math.random()*LW;}
       cx.beginPath();cx.moveTo(s.x,s.y);cx.lineTo(s.x-R.speedX*0.6,s.y-s.len);cx.stroke();
@@ -2594,7 +2808,7 @@ function loop(ts){
   // ── Snow overlay ──────────────────────────────────────────────────────────
   if(weatherMode==='snow'){
     cx.save();cx.fillStyle='rgba(220,236,255,0.90)';
-    for(const f of snowFlakes){
+    for(const f of snowFlakes.slice(0,Math.ceil(snowFlakes.length*weatherFade))){
       f.wobble+=f.wobbleSpeed;
       f.x+=Math.sin(f.wobble)*BALANCE.weather.snow.driftAmp;
       f.y+=f.vy;
