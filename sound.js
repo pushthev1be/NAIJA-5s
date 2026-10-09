@@ -115,9 +115,35 @@ fetch('commentary/manifest.json')
   })
   .catch(() => {});
 
+// ── RECORDED CROWD (public/sfx) ──────────────────────────────────────────────
+// A looping stadium bed under the procedural crowd, plus one-shot reactions.
+const SFX_VOL = { 'crowd-ambience': 0.35, 'crowd-cheer': 0.8, 'crowd-angry': 0.6, 'crowd-shocked': 0.7 };
+const sfx = {};
+for (const name of Object.keys(SFX_VOL)) {
+  const a = new Audio(`sfx/${name}.mp3`);
+  a.preload = 'auto';
+  a.volume = SFX_VOL[name];
+  sfx[name] = a;
+}
+sfx['crowd-ambience'].loop = true;
+let _ducked = false;
+
+export function startAmbience() { const a = sfx['crowd-ambience']; if (a.paused) a.play().catch(() => {}); }
+export function stopAmbience() { sfx['crowd-ambience'].pause(); }
+// One-shot crowd reaction: 'crowd-cheer' | 'crowd-angry' | 'crowd-shocked'
+export function crowdReact(name) {
+  const a = sfx[name];
+  if (!a) return;
+  a.currentTime = 0;
+  a.volume = SFX_VOL[name] * (_ducked ? 0.4 : 1);
+  a.play().catch(() => {});
+}
+
 function duck(on) {
+  _ducked = on;
   if (crowdBus) crowdBus.gain.setTargetAtTime(on ? 0.35 : 1, AC().currentTime, on ? 0.05 : 0.4);
   if (!retroAudio.paused && !_retroFadeTimer) retroAudio.volume = on ? MUSIC_VOL * 0.35 : MUSIC_VOL;
+  for (const [name, a] of Object.entries(sfx)) a.volume = SFX_VOL[name] * (on ? 0.4 : 1);
 }
 
 // Play a commentary clip; onEnd fires when it finishes. Returns false if there is no clip.

@@ -1,3 +1,24 @@
 {
-  "clips": []
+  "clips": [
+    "fs_rob",
+    "fs_rob_r",
+    "fs_swipe",
+    "goal_born",
+    "goal_born_r",
+    "goal_god",
+    "goal_god_r",
+    "kick_live",
+    "kick_whistle",
+    "nm_close_r",
+    "ps_missile",
+    "ps_missile_r",
+    "ps_power",
+    "ps_wah",
+    "save_abeg",
+    "save_choke_r",
+    "save_early_r",
+    "save_noway",
+    "sb_pass",
+    "sb_pass_r"
+  ]
 }

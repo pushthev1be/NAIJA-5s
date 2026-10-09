@@ -24,7 +24,7 @@ import { CANVAS, PITCH, PHYSICS, RULES, MOVEMENT, POWER, SKILLS, TEAMS, ALL_TEAM
 import { initDevPanel, logCpuMatch } from './dev-panel.js';
 import { initTouchControls, setTouchMode, stick, isTouchDevice } from './touch-controls.js';
 import { LINES, COMMENTATORS } from './commentary.js';
-import { unlockAudio, sndBallHit, sndBoom, sndNiceShot, sndTap, sndGoal, sndNetBoom, playVoice, startCrowd, tickCrowd, stopRetroMusic, playRetroMusic, sndWhistle } from './sound.js';
+import { unlockAudio, sndBallHit, sndBoom, sndNiceShot, sndTap, sndGoal, sndNetBoom, playVoice, startAmbience, stopAmbience, crowdReact, startCrowd, tickCrowd, stopRetroMusic, playRetroMusic, sndWhistle } from './sound.js';
 
 // ── CANVAS ────────────────────────────────────────────────────────────────────
 const cv=document.getElementById('g'), cx=cv.getContext('2d');
@@ -1483,7 +1483,7 @@ function updateBall(dt){
       const nearRight=ball.x>PX+PW-16&&Math.abs(ball.vx)>2;
       if(nearLeft||nearRight){
         const distToMouth=Math.min(Math.abs(ball.y-topPost),Math.abs(ball.y-botPost));
-        if(distToMouth<NM){showCallout('SO CLOSE! 😬',ball.x,ball.y-24,60);triggerCommentary('nearMiss');}
+        if(distToMouth<NM){showCallout('SO CLOSE! 😬',ball.x,ball.y-24,60);triggerCommentary('nearMiss');crowdReact('crowd-shocked');}
       }
     }
   }
@@ -1508,6 +1508,7 @@ function goalScore(team){
   phase='goal'; goalFlash=90;
   ball.vx*=0.28; ball.vy=(Math.random()-0.5)*2.2; ball.vz=2.2+Math.random()*1.8;
   startGoalFx(team);
+  crowdReact(team===0?'crowd-cheer':'crowd-angry');   // the stadium is mostly home fans
   spawnSparks(ball.x,ball.y,'kick',22);
   rumbleGoal();
   if(lastShotPower) sndNetBoom(); else sndGoal();
@@ -2122,7 +2123,7 @@ function startMatchFromMenu(){
   p2Mode=(gameMode==='pvp');
   menuState='match';
   initMatch(matchHomeDef,matchAwayDef);
-  startCrowd();
+  startCrowd(); startAmbience();
   devStats={possession:[0,0],shots:[0,0],startTime:Date.now()};
 }
 function startLeagueFixture(){
@@ -2137,7 +2138,7 @@ function startLeagueFixture(){
   matchAwayDef=ALL_TEAMS[leagueState.playerIsHome?opp:pi];
   p2Mode=false; menuState='match';
   initMatch(matchHomeDef,matchAwayDef);
-  startCrowd();
+  startCrowd(); startAmbience();
   devStats={possession:[0,0],shots:[0,0],startTime:Date.now()};
 }
 function handleMatchEnd(){
@@ -2433,7 +2434,7 @@ function loop(ts){
     menuState==='match'&&ball?{mine:ball.owner?.team==='home',theirs:ball.owner?.team==='away'}:null);
   // Music on entering any menu (title on load, or back from a match)
   const inMenu=menuState!=='match';
-  if(inMenu&&!wasInMenu)playRetroMusic();
+  if(inMenu&&!wasInMenu){playRetroMusic();stopAmbience();}
   wasInMenu=inMenu;
   if(menuState!=='match'){drawMenu(inp);return;}
   if(inp.pausePressed&&(phase==='play'||phase==='kickoff'||paused)){
@@ -2543,6 +2544,7 @@ function loop(ts){
       const sayCel=gkR2>=3?['E HOLD AM!','LIKE A WALL!','NAIJA GK!!!']:['GK CHOKE AM!','NO WAY!!!'];
       curGK.speechBubble={text:sayCel[Math.floor(Math.random()*sayCel.length)],t:0,maxT:160};
       triggerCommentary('save');
+      if(gkR2>=2)crowdReact('crowd-shocked');
     }
     prevGKOwner=ball.owner?.role==='gk'?ball.owner:null;
     updateParticles(physDt);
