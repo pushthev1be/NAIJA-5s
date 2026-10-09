@@ -19,7 +19,7 @@ html,body{width:100%;height:100%;background:#050A05;overflow:hidden;display:flex
 <script type="module">
 import { CANVAS, PITCH, PHYSICS, RULES, MOVEMENT, POWER, SKILLS, TEAMS, ALL_TEAMS, UI, BALANCE } from './game.config.js';
 import { initDevPanel, logCpuMatch } from './dev-panel.js';
-import { initTouchControls, setTouchMode, stick } from './touch-controls.js';
+import { initTouchControls, setTouchMode, stick, isTouchDevice } from './touch-controls.js';
 import { unlockAudio, sndBallHit, sndBoom, sndNiceShot, sndTap, sndGoal, sndNetBoom, startCrowd, tickCrowd, stopRetroMusic, playRetroMusic, sndWhistle } from './sound.js';
 
 // ── CANVAS ────────────────────────────────────────────────────────────────────
@@ -30,6 +30,9 @@ const LW = CANVAS.logicalWidth;
 const LH = CANVAS.logicalHeight;
 const SP = CANVAS.spritePixelSize;
 let SC=1;
+// Camera zoom: on small touch screens the world is zoomed and follows the ball
+// (like a broadcast/side cam) so players stay readable; desktop sees the full pitch.
+let camZ=1, camX=LW/2, camY=LH/2;
 function resize(){
   // Render at device pixel ratio so phones stay sharp; CSS size stays fit-to-screen.
   const dpr=Math.min(window.devicePixelRatio||1,3);
@@ -37,6 +40,7 @@ function resize(){
   SC=fit*dpr;
   cv.width=Math.round(LW*SC); cv.height=Math.round(LH*SC);
   cv.style.width=Math.round(LW*fit)+'px'; cv.style.height=Math.round(LH*fit)+'px';
+  camZ=isTouchDevice?Math.min(CANVAS.mobileZoomMax,Math.max(1,CANVAS.mobileMinScale/fit)):1;
   cx.imageSmoothingEnabled=false;
 }
 addEventListener('resize',resize); resize();
@@ -615,7 +619,7 @@ function mkPlayer(x,y,team,role,skills=[],name='',gkRating=1){
     activeSkill:null,skillT:0,
     feinted:false,feintT:0,
     diving:false,
-    stamina:100,
+    stamina:100, missT:0,
     speechBubble:null,
     goalsScored:0,
     hatTrickMode:false,
@@ -784,6 +788,7 @@ function initMatch(hDef=matchHomeDef,aDef=matchAwayDef){
   const teams=buildTeamsFromDef(hDef,aDef);
   home=teams.h; away=teams.a;
   ball=mkBall();
+  resetPossession();
   // Control the ST (or last outfield player if no ST)
   ctrlIdx=home.findIndex(p=>p.role==='st');
   if(ctrlIdx<0)ctrlIdx=home.length-1;
@@ -886,7 +891,7 @@ function activateSkill(p,name){
   if(name==='speedBoost'&&isDefR&&ball.owner&&ball.owner.team!==p.team){
     const carrier=ball.owner;
     const chaseRange=SKILLS.steal.tackleRange*(2.2+0.6*(p.starLevels?.steal??1));
-    if(dst(p,carrier)<chaseRange&&p.tackleCD<=0){
+    if(dst(p,carrier)<chaseRange&&canChallenge(p)&&rollTackle(p,carrier,BALANCE.duel.stealSkillBonus)){
       const[fnx,fny]=nrm(carrier.x-p.x,carrier.y-p.y);
       p.x=carrier.x-fnx*(PRAD*2.2); p.y=carrier.y-fny*(PRAD*2.2);
       ball.owner=null;
@@ -903,6 +908,46 @@ function activateSkill(p,name){
   else if(name==='longShot')triggerCommentary('longShot',p.name);
 }
 
+// ── DUELS & POSSESSION ───────────────────────────────────────────────────────
+// One tackle formula for human and CPU. possT counts frames since the ball
+// last changed owner: it drives the new carrier's grace period and AI reaction.
+let possT=0, prevOwner=null;
+const teamChallengeT={home:0,away:0}, teamShotT={home:0,away:0};
+function tickPossession(dt){
+  if(ball.owner!==prevOwner){prevOwner=ball.owner;possT=0;}
+  else possT+=dt;
+  for(const t of ['home','away']){
+    teamChallengeT[t]=Math.max(0,teamChallengeT[t]-dt);
+    teamShotT[t]=Math.max(0,teamShotT[t]-dt);
+  }
+}
+function resetPossession(){
+  possT=0;prevOwner=null;
+  teamChallengeT.home=teamChallengeT.away=teamShotT.home=teamShotT.away=0;
+}
+const inGrace=()=>possT<BALANCE.duel.possessionGrace;
+function rollTackle(p,carrier,bonus=0){
+  const D=BALANCE.duel, ST=BALANCE.stamina;
+  p.stamina=Math.max(0,p.stamina-ST.tackleCost);
+  const tStars=p.starLevels?.steal??p.overallStars??1;
+  let ch=D.baseChance+D.starBonus*(tStars-(carrier.overallStars??1))+bonus;
+  if(carrier.stamina<ST.fatigueBelow)ch+=D.tiredCarrierBonus;
+  if(p.stamina<ST.fatigueBelow)ch-=D.tiredTacklerPenalty;
+  if(Math.random()<clamp(ch,D.min,D.max))return true;
+  p.tackleCD=D.missCooldown; p.missT=D.missSlowFrames;
+  showCallout('MISSED!',p.x,p.y-22,30);
+  return false;
+}
+function laneBlocked(p,goalX,opps){
+  const L=BALANCE.cpu.laneCheckDist;
+  const[gx,gy]=nrm(goalX-p.x,MY-p.y);
+  return opps.some(o=>{
+    if(o.role==='gk')return false;
+    const ox=o.x-p.x,oy=o.y-p.y,d=Math.hypot(ox,oy);
+    return d>0&&d<L&&(ox*gx+oy*gy)/d>0.85;
+  });
+}
+
 // ── AI ACTIONS ────────────────────────────────────────────────────────────────
 function aiShoot(p,goalX,power){
   const AI=POWER.ai;
@@ -916,6 +961,7 @@ function aiShoot(p,goalX,power){
   ball.z=3; ball.vz=1.0;
   p.kickCD=AI.kickCooldown; p.state='kick';
   spawnSparks(p.x,p.y,'kick',5);
+  if(power>AI.gkClearVelocity)teamShotT[p.team]=BALANCE.cpu.teamShotGap;
   if(devStats)devStats.shots[p.team==='home'?0:1]++;
 }
 function aiStrikerShoot(p,goalX){
@@ -934,6 +980,7 @@ function aiStrikerShoot(p,goalX){
   ball.z=2.5+Math.random()*2.5; ball.vz=0.7+Math.random()*0.9;
   p.kickCD=AI.kickCooldown; p.state='kick';
   spawnSparks(p.x,p.y,'kick',8);
+  teamShotT[p.team]=BALANCE.cpu.teamShotGap;
   if(devStats)devStats.shots[p.team==='home'?0:1]++;
 }
 function aiPass(p,mates){
@@ -951,9 +998,12 @@ function aiPass(p,mates){
   ball.vx=bx*POWER.ai.passVelocity; ball.vy=by*POWER.ai.passVelocity;
   p.kickCD=10;
 }
-function aiTackle(p){
+const canChallenge=p=>p.tackleCD<=0&&teamChallengeT[p.team]<=0&&!inGrace();
+function aiTackle(p,bonus=0){
   if(!ball.owner||ball.owner.team===p.team)return;
-  if(dst(p,ball.owner)<PRAD*3.2&&p.tackleCD<=0){
+  if(dst(p,ball.owner)<PRAD*3.2&&canChallenge(p)){
+    teamChallengeT[p.team]=BALANCE.cpu.teamChallengeGap;
+    if(!rollTackle(p,ball.owner,bonus))return;
     ball.owner=null;
     ball.vx=p.dir*1.8+(Math.random()-0.5);
     ball.vy=(Math.random()-0.5)*1.2;
@@ -973,8 +1023,10 @@ function aiUpdate(players,opps,dt){
   // Comeback aggression: boost when losing by 3+ goals
   const myScore=score[isHome?0:1], oppScore=score[isHome?1:0];
   const deficit=oppScore-myScore;
-  const comebackMult=deficit>=3?Math.min(2.4,1+deficit*0.30):1.0;
-  const pressBoost=deficit>=3?1.35:1.0;
+  const CPU=BALANCE.cpu;
+  const comeback=CPU.comebackBoost&&deficit>=3;
+  const comebackMult=comeback?Math.min(2.4,1+deficit*0.30):1.0;
+  const pressBoost=comeback?1.35:1.0;
 
   for(const p of players){
     if(p.controlled)continue;
@@ -987,12 +1039,12 @@ function aiUpdate(players,opps,dt){
     for(const s in p.skillCDs)p.skillCDs[s]=Math.max(0,p.skillCDs[s]-dt);
     if(p.skillT>0){p.skillT-=dt;}else if(p.activeSkill){p.activeSkill=null;}
     const ST=BALANCE.stamina;
-    p.stamina=Math.min(ST.max,p.stamina+ST.regenPerFrame*dt);
     // Sustained drain while speedBoost is running; kill skill if stamina hits 0
     if(p.activeSkill==='speedBoost'){
       p.stamina=Math.max(0,p.stamina-ST.speedBoostDrainRate*dt);
       if(p.stamina<=0){p.activeSkill=null;p.skillT=0;}
     }
+    if(p.missT>0)p.missT-=dt;
 
     const hasBall=ball.owner===p;
     const tmHas =players.some(m=>m===ball.owner);
@@ -1091,7 +1143,9 @@ function aiUpdate(players,opps,dt){
       const starRange=p.overallStars>=3?1.45:p.overallStars>=2?1.18:1;
       if(canSkill(p,'speedBoost')&&Math.random()<SB.dribbleActivateChance*starSkill*dt)activateSkill(p,'speedBoost');
       const psStars=p.starLevels?.powerShot??0;
-      const psThresh=psStars>=3&&isAtk?0.90:PS.activateChance*starSkill*comebackMult*dt;
+      const psThresh=psStars>=3&&isAtk?CPU.starStrikerPowerShotChance*dt:PS.activateChance*starSkill*comebackMult*dt;
+      const shotReady=p.kickCD<=0&&teamShotT[p.team]<=0;
+      const laneMult=laneBlocked(p,goalX,opps)?CPU.blockedLaneMult:1;
       // Shoot BEFORE crossing into the penalty area (20px buffer outside the 18; 3★ wider)
       const boxPad=p.overallStars>=3?45:20;
       const nearBox=isHome
@@ -1104,13 +1158,15 @@ function aiUpdate(players,opps,dt){
         (_dg>=72 &&_dg<=168&&_dy>=68&&_dy<=148) ||   // wide left / right angles
         (_dg>=188&&_dg<=275&&_dy<52)         // long-range central rocket
       );
-      if((nearBox||inFlameZone)&&p.kickCD<=0){
-        if(canSkill(p,'powerShot')&&Math.random()<psThresh){
+      // In shooting position: shoot at a per-frame rate (not instantly), less when the lane is blocked
+      if((nearBox||inFlameZone)&&shotReady&&Math.random()<CPU.boxShootChance*laneMult*dt){
+        const psPick=psStars>=3&&isAtk?0.75:0.35;
+        if(canSkill(p,'powerShot')&&Math.random()<psPick){
           activateSkill(p,'powerShot');
           const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
           aiShoot(p,goalX,PS.velocity*velMult);
           lastShotPower=true;
-          if (psStars >= 3 && Math.random() < 0.9) {
+          if (psStars >= 3 && Math.random() < CPU.fireballChance) {
               ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
               ball.bypassesKeeper = true;
               showCallout('FIREBALL! 🔥', p.x, p.y-28);
@@ -1129,13 +1185,13 @@ function aiUpdate(players,opps,dt){
       } else {
         const dg=Math.abs(p.x-goalX);
         const effectiveRange=AI.shootRange*starRange;
-        if(dg<effectiveRange&&p.kickCD<=0){
+        if(dg<effectiveRange&&shotReady){
           if(canSkill(p,'powerShot')&&dg<PS.goalRange*starRange&&Math.random()<psThresh){
             activateSkill(p,'powerShot');
             const velMult=psStars>=3?1.0:psStars>=2?0.5:0.3;
             aiShoot(p,goalX,PS.velocity*velMult);
             lastShotPower=true;
-            if (psStars >= 3 && Math.random() < 0.9) {
+            if (psStars >= 3 && Math.random() < CPU.fireballChance) {
                 ball.onFire = true; ball.vx *= 1.35; ball.vy *= 1.35;
                 ball.bypassesKeeper = true;
                 showCallout('FIREBALL! 🔥', p.x, p.y-28);
@@ -1149,7 +1205,7 @@ function aiUpdate(players,opps,dt){
             const lsStars=p.starLevels?.longShot??1;
             const velMult=lsStars>=3?1.0:lsStars>=2?0.5:0.3;
             aiShoot(p,goalX,LS.velocity*velMult);
-          } else if(!(psStars>=3&&isAtk&&canSkill(p,'powerShot'))&&dg<PS.goalRange*starRange&&Math.random()<AI.normalShootChance*shootMult*(p.ego>=3?1.28:1)*starSkill*comebackMult*dt){
+          } else if(!(psStars>=3&&isAtk&&canSkill(p,'powerShot'))&&dg<PS.goalRange*starRange&&Math.random()<AI.normalShootChance*shootMult*(p.ego>=3?1.28:1)*starSkill*comebackMult*laneMult*dt){
             lastShotPower=false;
             if(isAtk&&Math.random()<0.9)aiStrikerShoot(p,goalX);
             else aiShoot(p,goalX,AI.normalVelocity+Math.random()*AI.normalVariance);
@@ -1213,13 +1269,14 @@ function aiUpdate(players,opps,dt){
       // 3-star steal CB presses anywhere on the pitch (100% aggressive)
       const zonePress=isDefRole&&(inDangerZone||(inDefHalf&&nearTouch)||(stlStars>=3&&isClosestDef));
 
-      if(!p.feinted&&(canPress||zonePress)){
+      const reacted=possT>=BALANCE.cpu.reactionDelay;
+      if(!p.feinted&&reacted&&(canPress||zonePress)){
         tx=ball.x;ty=ball.y;
         reactionBoost=stlStars>=3?1.68:stlStars>=2?1.16:1.0;
         if(canSkill(p,'speedBoost')&&dst(p,ball)<SB.defendActivateRange&&Math.random()<SB.defendActivateChance*dt)activateSkill(p,'speedBoost');
         const stlRange=STL.tackleRange*(stlStars>=3?1.85:0.7+0.18*stlStars);
-        if(canSkill(p,'steal')&&ball.owner&&dst(p,ball.owner)<stlRange&&p.tackleCD<=0){
-          activateSkill(p,'steal'); aiTackle(p);
+        if(canSkill(p,'steal')&&ball.owner&&dst(p,ball.owner)<stlRange&&canChallenge(p)){
+          activateSkill(p,'steal'); aiTackle(p,BALANCE.duel.stealSkillBonus);
         } else aiTackle(p);
       } else {
         // Out of press range — defenders maintain their formation Y with a moderate shift towards ball
@@ -1238,8 +1295,15 @@ function aiUpdate(players,opps,dt){
 
     const ddx=tx-p.x,ddy=ty-p.y,dd=Math.hypot(ddx,ddy);
     const diveBoost=p.diving?gkReachMult:1;
+    // Chasing (far-target or press boost) is the AI's sprint: costs stamina, capped below human sprint
+    const chaseMult=p.stamina>0?(dd>MV.aiFarDist?MV.aiFarMult:1)*reactionBoost:1;
+    const chasing=dd>MV.aiArrivalDist&&chaseMult>1&&p.role!=='gk';
+    if(chasing)p.stamina=Math.max(0,p.stamina-ST.chaseDrain*dt);
+    else p.stamina=Math.min(ST.max,p.stamina+ST.regenPerFrame*dt);
     if(dd>MV.aiArrivalDist){
-      const s2=spd*(dd>MV.aiFarDist?MV.aiFarMult:1)*diveBoost*reactionBoost*dt;
+      let v=spd*chaseMult*diveBoost*(p.missT>0?BALANCE.duel.missSlowMult:1);
+      if(p.activeSkill!=='speedBoost'&&!p.diving)v=Math.min(v,CPU.maxChaseSpeed);
+      const s2=v*dt;
       p.x+=ddx/dd*s2; p.y+=ddy/dd*s2;
       if(!p.diving){p.state='run'; p.dir=ddx>0?1:-1;}
       if(weatherMode==='rain'&&Math.random()<0.012*dt)spawnSplash(p.x+(Math.random()-0.5)*4,p.y+5);
@@ -1433,7 +1497,7 @@ function updateControlled(p,inp,dt,cs=ctrl1){
   p.kickCD=Math.max(0,p.kickCD-dt);
   p.tackleCD=Math.max(0,p.tackleCD-dt);
   const ST=BALANCE.stamina;
-  p.stamina=Math.min(ST.max,p.stamina+ST.regenPerFrame*dt);
+  if(p.missT>0)p.missT-=dt;
   if(p.activeSkill==='speedBoost'){
     p.stamina=Math.max(0,p.stamina-ST.speedBoostDrainRate*dt);
     if(p.stamina<=0){p.activeSkill=null;p.skillT=0;}
@@ -1443,7 +1507,11 @@ function updateControlled(p,inp,dt,cs=ctrl1){
   if(p.skillT>0){p.skillT-=dt;}else if(p.activeSkill){p.activeSkill=null;}
 
   const moving=Math.hypot(inp.dx,inp.dy)>0.1;
-  const spd=(inp.sprint?SPRINTSPD:WALK)*fatigueMult;
+  // Sprinting drains stamina; an empty tank means no sprint until it recovers
+  const sprinting=inp.sprint&&moving&&p.stamina>0;
+  if(sprinting)p.stamina=Math.max(0,p.stamina-ST.sprintDrain*dt);
+  else p.stamina=Math.min(ST.max,p.stamina+ST.regenPerFrame*dt);
+  const spd=(sprinting?SPRINTSPD:WALK)*fatigueMult*(p.missT>0?BALANCE.duel.missSlowMult:1);
   p.x+=inp.dx*spd*dt; p.y+=inp.dy*spd*dt;
   p.x=clamp(p.x,PX+PRAD,PX+PW-PRAD);
   p.y=clamp(p.y,PY+PRAD,PY+PH-PRAD);
@@ -1459,13 +1527,13 @@ function updateControlled(p,inp,dt,cs=ctrl1){
   cs.dirChangeT+=dt; if(cs.dirChangeT>MOVEMENT.dribbleWindow)cs.dirChanges=0;
   p.state=moving?'run':'idle';
   if(moving){
-    const rate=inp.sprint?MOVEMENT.sprintFrameRate:MOVEMENT.walkFrameRate;
+    const rate=sprinting?MOVEMENT.sprintFrameRate:MOVEMENT.walkFrameRate;
     p.frameT+=dt*16.67;
     if(p.frameT>=rate){p.frame=(p.frame+1)%4;p.frameT=0;}
   } else {p.frame=0;p.frameT=0;}
 
   // Sprint with ball POWER! callout
-  if(inp.sprint&&moving&&ball.owner===p){
+  if(sprinting&&ball.owner===p){
     cs.sprintTime+=dt/60;
     if(cs.sprintTime>MOVEMENT.sprintCalloutDelay&&cs.sprintTime<MOVEMENT.sprintCalloutDelay+0.1)
       showCallout('POWER! ⚡',p.x,p.y-26);
@@ -1474,7 +1542,7 @@ function updateControlled(p,inp,dt,cs=ctrl1){
 
   // Sprint dust + trails + weather splashes
   if(moving&&weatherMode==='rain'&&Math.random()<0.18*dt)spawnSplash(p.x+(Math.random()-0.5)*5,p.y+5);
-  if(inp.sprint&&moving){
+  if(sprinting){
     if(Math.random()<0.3)spawnDust(p.x,p.y+5,inp.dx*SPRINTSPD,inp.dy*SPRINTSPD,3);
     if(Math.random()<BALANCE.trail.spawnChance)trails.push({x:p.x,y:p.y,frame:p.frame,dir:p.dir,a:BALANCE.trail.initialAlpha,tc:COL[p.team]});
   }
@@ -1602,7 +1670,7 @@ function updateControlled(p,inp,dt,cs=ctrl1){
   // Tackle
   if(inp.tacklePressed&&p.tackleCD<=0){
     const carrier=ball.owner;
-    if(carrier&&carrier.team!==p.team&&dst(p,carrier)<PRAD*TK.rangeMultiplier){
+    if(carrier&&carrier.team!==p.team&&dst(p,carrier)<PRAD*TK.rangeMultiplier&&!inGrace()&&rollTackle(p,carrier)){
       ball.owner=null;
       ball.vx=p.dir*TK.forwardVelocity+(Math.random()-0.5)*TK.lateralRandom;
       ball.vy=(Math.random()-0.5)*TK.lateralRandom;
@@ -1669,7 +1737,8 @@ function drawUI(){
   cx.textAlign='right';cx.fillStyle=COL.away.shirt;cx.fillText('AWAY',PX+PW-4,14);
   // Controls hint — switches between gamepad and keyboard
   cx.font='7px monospace';cx.fillStyle='rgba(255,255,255,0.22)';cx.textAlign='left';
-  if(gpName&&p2Mode&&gpName2){
+  if(isTouchDevice&&!gpName){
+  } else if(gpName&&p2Mode&&gpName2){
     cx.fillText('× Shoot  □ Pass  ○ Tackle  △ Switch  L-Stick Move  R-Stick Aim  L2/R2 Sprint',PX,LH-8);
   } else if(gpName&&!p2Mode){
     cx.fillText('× Shoot  □ Pass  ○ Tackle  △ Switch  L-Stick Move  R-Stick Aim  L2/R2 Sprint  ` Dev',PX,LH-8);
@@ -1714,6 +1783,43 @@ function drawUI(){
     cx.font="6px 'Press Start 2P',monospace";cx.fillStyle=UI.textMute;cx.fillText('SPACE / ×  CONTINUE',MX,MY+52);
     cx.shadowBlur=0;
   }
+}
+
+// ── CAMERA & RADAR ───────────────────────────────────────────────────────────
+function updateCamera(dt){
+  if(camZ<=1){camX=LW/2;camY=LH/2;return;}
+  // Look slightly ahead of the ball's travel so passes and shots stay in view
+  const tx=ball.x+ball.vx*CANVAS.cameraLead, ty=ball.y+ball.vy*CANVAS.cameraLead;
+  const k=1-Math.pow(1-CANVAS.cameraFollow,dt);
+  camX+=(tx-camX)*k; camY+=(ty-camY)*k;
+  const hw=LW/(2*camZ), hh=LH/(2*camZ);
+  camX=clamp(camX,hw,LW-hw); camY=clamp(camY,hh,LH-hh);
+}
+function applyCamera(){
+  if(camZ<=1)return;
+  cx.translate(LW/2,LH/2); cx.scale(camZ,camZ); cx.translate(-camX,-camY);
+}
+function drawRadar(){
+  if(camZ<=1)return;
+  const rw=120, rh=rw*PH/PW, rx=MX-rw/2, ry=LH-rh-16;
+  const sx=x=>rx+(x-PX)/PW*rw, sy=y=>ry+(y-PY)/PH*rh;
+  cx.save();
+  cx.fillStyle='rgba(0,0,0,0.45)'; cx.fillRect(rx-2,ry-2,rw+4,rh+4);
+  cx.strokeStyle='rgba(255,255,255,0.35)'; cx.lineWidth=0.75;
+  cx.strokeRect(rx,ry,rw,rh);
+  cx.beginPath(); cx.moveTo(rx+rw/2,ry); cx.lineTo(rx+rw/2,ry+rh); cx.stroke();
+  // visible area
+  const hw=LW/(2*camZ), hh=LH/(2*camZ);
+  cx.strokeStyle='rgba(253,224,71,0.6)';
+  cx.strokeRect(sx(camX-hw),sy(camY-hh),hw*2/PW*rw,hh*2/PH*rh);
+  for(const p of [...home,...away]){
+    cx.fillStyle=p.team==='home'?COL.home.shirt:COL.away.shirt;
+    const r=p.controlled?2.4:1.6;
+    cx.beginPath(); cx.arc(sx(p.x),sy(p.y),r,0,Math.PI*2); cx.fill();
+    if(p.controlled){cx.strokeStyle='#fff';cx.lineWidth=0.75;cx.stroke();}
+  }
+  cx.fillStyle='#fff'; cx.fillRect(sx(ball.x)-1,sy(ball.y)-1,2,2);
+  cx.restore();
 }
 
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────────
@@ -2159,6 +2265,7 @@ function loop(ts){
     timer-=dt*(16.67/1000);
     if(timer<=0){timer=0;phase='end';}
     updateBall(physDt);
+    tickPossession(physDt);
     if(phase==='play'){
     if(cpuTestMode){
       // Full CPU-vs-CPU — home team also AI-controlled
@@ -2219,7 +2326,9 @@ function loop(ts){
   ctrl1.prevKickHeld=inp.kickHeld;
 
   // ── RENDER ──────────────────────────────────────────────────────────────
+  updateCamera(dt);
   cx.save();cx.scale(SC,SC);
+  cx.save();applyCamera();
   cx.drawImage(pitchBg,0,0);
   drawCrowd();
   drawManagers();
@@ -2383,8 +2492,10 @@ function loop(ts){
   }
 
   drawCallouts();
+  cx.restore();   // end camera — HUD below is screen-space
   drawCommentary();
   drawUI();
+  drawRadar();
 
   // ── Rain overlay ──────────────────────────────────────────────────────────
   if(weatherMode==='rain'){

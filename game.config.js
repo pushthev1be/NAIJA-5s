@@ -10,6 +10,14 @@ export const CANVAS = {
   logicalWidth:  800,
   logicalHeight: 480,
   spritePixelSize: 1.5,  // SP — each sprite "dot" occupies this many real pixels²
+
+  // Touch devices: zoom so one logical px is at least this many CSS px on screen
+  // (players ~30% bigger on a phone), capped at mobileZoomMax. The camera then
+  // follows the ball; a radar shows the whole pitch. Desktop is unaffected.
+  mobileMinScale: 1.3,
+  mobileZoomMax:  1.6,
+  cameraFollow:   0.08,   // fraction of the gap to the target closed per frame
+  cameraLead:     10,     // frames of ball velocity to look ahead
 };
 
 // ── PITCH GEOMETRY ────────────────────────────────────────────────────────────
@@ -571,10 +579,44 @@ export const BALANCE = {
     },
   },
 
+  // ── Fair duels (same rules for human and CPU) ─────────────────────────────
+  // Tackles are a roll, not a guarantee. Chance = base + star difference
+  // (tackler steal stars vs carrier overall stars) ± stamina modifiers.
+  duel: {
+    baseChance:          0.45,
+    starBonus:           0.08,  // per star the tackler is above the carrier
+    stealSkillBonus:     0.22,  // added when the steal skill is used
+    tiredCarrierBonus:   0.20,  // carrier below stamina.fatigueBelow is easier to rob
+    tiredTacklerPenalty: 0.20,  // exhausted tacklers miss more
+    min: 0.15, max: 0.85,
+    missCooldown:        60,    // frames before a tackler who missed can try again
+    missSlowFrames:      30,    // frames a tackler stumbles after missing
+    missSlowMult:        0.55,  // speed fraction while stumbling
+    possessionGrace:     36,    // frames a player who just won the ball can't be tackled
+  },
+
+  // ── CPU behaviour (applies to every AI player, both teams) ───────────────
+  cpu: {
+    reactionDelay:     18,    // frames before AI presses a player who just got the ball
+    teamChallengeGap:  50,    // frames between tackle attempts by the same AI team
+    teamShotGap:      150,    // frames between shots by the same AI team (~2.5s)
+    boxShootChance:  0.07,    // per-frame chance to shoot once in shooting position
+    laneCheckDist:     70,    // px — defender in front within this distance = blocked lane
+    blockedLaneMult: 0.25,    // shot chance multiplier when the lane is blocked
+    maxChaseSpeed:   1.95,    // AI never outruns a sprinting human (MOVEMENT.sprint)
+    starStrikerPowerShotChance: 0.06,  // per-frame, 3★ strikers in a hot zone
+    fireballChance:   0.5,    // chance a 3★ power shot becomes a keeper-beating fireball
+    comebackBoost:  false,    // true = AI gets stronger when losing by 3+ (rubber-banding)
+  },
+
   // ── Stamina ───────────────────────────────────────────────────────────────
+  // Sprinting/chasing and tackling drain it; easing off recovers it.
   stamina: {
     max:                100,
-    regenPerFrame:      0.07,   // per dt=1 frame (~4/s, full recharge in ~25s)
+    regenPerFrame:      0.10,   // per dt=1 frame while not sprinting (~6/s)
+    sprintDrain:        0.30,   // per frame while sprinting (~18/s → ~5s of full sprint)
+    chaseDrain:         0.18,   // per frame while an AI player runs above walking pace
+    tackleCost:          10,    // each tackle attempt
     minToActivate:       20,    // skill blocked below this threshold
     costs: {
       powerShot:  42,
