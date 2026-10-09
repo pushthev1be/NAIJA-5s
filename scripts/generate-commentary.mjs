@@ -11,13 +11,15 @@
 //      npm run voices -- --only goal_burst,save_brick
 //      npm run voices -- --manifest-only   → just re-index the folder (e.g. after
 //                                             dropping in your own recordings named <id>.mp3)
+//      npm run voices -- --dry-run         → list what would be generated and the credit cost
+//                                             (ElevenLabs charges ~1 credit per character)
 //
 // The game only plays clips listed in manifest.json, so missing ones fall back to text.
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { ALL_LINES } from '../commentary.js';
+import { ALL_LINES, LINES } from '../commentary.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'public', 'commentary');
@@ -47,6 +49,15 @@ function writeManifest() {
 
 if (flag('--manifest-only')) { writeManifest(); process.exit(0); }
 
+const todo = ALL_LINES.filter(l => (!only.length || only.includes(l.id)) && (flag('--force') || !existsSync(join(OUT, `${l.id}.mp3`))));
+if (flag('--dry-run')) {
+  const byEvent = {};
+  for (const [ev, lines] of Object.entries(LINES)) byEvent[ev] = lines.flatMap(l => (l.reply ? [l, l.reply] : [l])).length;
+  console.log('lines per situation:', byEvent);
+  console.log(`${todo.length} clips to generate, ${todo.reduce((n, l) => n + l.say.length, 0)} characters ≈ credits`);
+  process.exit(0);
+}
+
 const KEY = process.env.ELEVENLABS_API_KEY;
 const VOICES = { mike: process.env.ELEVEN_VOICE_MIKE, bayo: process.env.ELEVEN_VOICE_BAYO };
 const MODEL = process.env.ELEVEN_MODEL || 'eleven_multilingual_v2';
@@ -75,11 +86,10 @@ async function tts(line, attempt = 1) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-let made = 0, skipped = 0, failed = 0;
-for (const line of ALL_LINES) {
-  if (only.length && !only.includes(line.id)) continue;
+let made = 0, failed = 0;
+const skipped = ALL_LINES.length - todo.length;
+for (const line of todo) {
   const file = join(OUT, `${line.id}.mp3`);
-  if (existsSync(file) && !flag('--force')) { skipped++; continue; }
   try {
     writeFileSync(file, await tts(line));
     made++;
@@ -89,5 +99,5 @@ for (const line of ALL_LINES) {
     console.error(`✗ ${line.id}: ${e.message}`);
   }
 }
-console.log(`\n${made} generated, ${skipped} already existed, ${failed} failed`);
+console.log(`\n${made} generated, ${skipped} skipped, ${failed} failed`);
 writeManifest();
