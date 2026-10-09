@@ -1,0 +1,9 @@
+{
+  "name": "Naija 5s — Super League",
+  "short_name": "Naija 5s",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#050A05",
+  "theme_color": "#050A05"
+}

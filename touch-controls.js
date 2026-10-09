@@ -85,6 +85,7 @@ const CSS = `
 #tc-ed button{font:inherit;color:#fff;background:#23262d;border:2px solid rgba(255,255,255,.3);border-radius:8px;min-height:40px;min-width:40px;padding:0 10px}
 #tc-ed button.done{background:#166534;border-color:#22c55e}
 #tc-ed .val{min-width:40px;text-align:center;color:#fde047}
+#tc-ed .grp{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 
 #tc-rotate{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;flex-direction:column;gap:18px;background:#050A05;color:#fde047;font-family:'Press Start 2P',monospace;font-size:12px;text-align:center;line-height:1.8;padding:24px}
 @media (orientation:portrait){#tc-rotate.touch{display:flex}}
@@ -364,8 +365,8 @@ function buildEditor() {
   ed.innerHTML = `
     <div>DRAG TO MOVE · TAP TO SELECT</div>
     <div class="row">
-      <span>SIZE</span><button data-a="size-">−</button><span class="val" data-v="size"></span><button data-a="size+">+</button>
-      <span>OPACITY</span><button data-a="op-">−</button><span class="val" data-v="op"></span><button data-a="op+">+</button>
+      <span class="grp">SIZE<button data-a="size-">−</button><span class="val" data-v="size"></span><button data-a="size+">+</button></span>
+      <span class="grp">OPACITY<button data-a="op-">−</button><span class="val" data-v="op"></span><button data-a="op+">+</button></span>
     </div>
     <div class="row">
       <button data-a="stick" data-v="stick"></button>
