@@ -77,6 +77,7 @@ function startMusic() {
 // every such event until music and sound effects are actually running.
 const _onGesture = () => {
   resume();
+  if (_wantAmbience && !ambienceSrc) startAmbience();
   if (_musicWanted && retroAudio.paused) startMusic();
 };
 for (const ev of ['pointerup', 'touchend', 'click', 'keydown'])
@@ -97,66 +98,94 @@ export function stopRetroMusic() {
   });
 }
 
-// ── COMMENTARY VOICES ─────────────────────────────────────────────────────────
-// Pre-generated clips live in public/commentary/<id>.mp3 and are listed in
-// manifest.json (see scripts/generate-commentary.mjs). Lines without a clip
-// stay text-only.
-const voiceClips = new Map();
-let currentVoice = null;
+// ── COMMENTARY VOICES + RECORDED CROWD (Web Audio) ───────────────────────────
+// Clips are decoded into the shared AudioContext instead of <audio> elements:
+// one tap unlocks the context for the whole session (iOS otherwise blocks each
+// element that isn't started inside a tap), and everything mixes through gains.
+// Voices: public/commentary/<id>.mp3 listed in manifest.json. Crowd: public/sfx.
+const buffers = new Map();
+const SFX_VOL = { 'crowd-ambience': 0.35, 'crowd-cheer': 0.8, 'crowd-angry': 0.6, 'crowd-shocked': 0.7 };
+let voiceBus = null, sfxBus = null, currentVoice = null, ambienceSrc = null, _wantAmbience = false;
+const lastReact = {};
 
+// iOS 16.4+: let Web Audio play even with the ring/silent switch on
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+
+function buses() {
+  if (!voiceBus) {
+    const ctx = AC();
+    voiceBus = ctx.createGain(); voiceBus.gain.value = 1.15; voiceBus.connect(ctx.destination);
+    sfxBus = ctx.createGain(); sfxBus.connect(ctx.destination);
+  }
+}
+async function loadClip(key, url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return;
+    buffers.set(key, await AC().decodeAudioData(await r.arrayBuffer()));
+    if (key === 'sfx:crowd-ambience' && _wantAmbience) startAmbience();
+  } catch { /* missing or undecodable clip: stays text/silent */ }
+}
 fetch('commentary/manifest.json')
   .then(r => (r.ok ? r.json() : { clips: [] }))
-  .then(({ clips }) => {
-    for (const id of clips) {
-      const a = new Audio(`commentary/${id}.mp3`);
-      a.preload = 'auto';
-      voiceClips.set(id, a);
-    }
-  })
+  .then(({ clips }) => { for (const id of clips) loadClip('voice:' + id, `commentary/${id}.mp3`); })
   .catch(() => {});
-
-// ── RECORDED CROWD (public/sfx) ──────────────────────────────────────────────
-// A looping stadium bed under the procedural crowd, plus one-shot reactions.
-const SFX_VOL = { 'crowd-ambience': 0.35, 'crowd-cheer': 0.8, 'crowd-angry': 0.6, 'crowd-shocked': 0.7 };
-const sfx = {};
-for (const name of Object.keys(SFX_VOL)) {
-  const a = new Audio(`sfx/${name}.mp3`);
-  a.preload = 'auto';
-  a.volume = SFX_VOL[name];
-  sfx[name] = a;
-}
-sfx['crowd-ambience'].loop = true;
-let _ducked = false;
-
-export function startAmbience() { const a = sfx['crowd-ambience']; if (a.paused) a.play().catch(() => {}); }
-export function stopAmbience() { sfx['crowd-ambience'].pause(); }
-// One-shot crowd reaction: 'crowd-cheer' | 'crowd-angry' | 'crowd-shocked'
-export function crowdReact(name) {
-  const a = sfx[name];
-  if (!a) return;
-  a.currentTime = 0;
-  a.volume = SFX_VOL[name] * (_ducked ? 0.4 : 1);
-  a.play().catch(() => {});
-}
+for (const name of Object.keys(SFX_VOL)) loadClip('sfx:' + name, `sfx/${name}.mp3`);
 
 function duck(on) {
-  _ducked = on;
-  if (crowdBus) crowdBus.gain.setTargetAtTime(on ? 0.35 : 1, AC().currentTime, on ? 0.05 : 0.4);
+  const ctx = AC(), t = ctx.currentTime, tau = on ? 0.05 : 0.4;
+  if (crowdBus) crowdBus.gain.setTargetAtTime(on ? 0.35 : 1, t, tau);
+  if (sfxBus) sfxBus.gain.setTargetAtTime(on ? 0.4 : 1, t, tau);
   if (!retroAudio.paused && !_retroFadeTimer) retroAudio.volume = on ? MUSIC_VOL * 0.35 : MUSIC_VOL;
-  for (const [name, a] of Object.entries(sfx)) a.volume = SFX_VOL[name] * (on ? 0.4 : 1);
 }
 
-// Play a commentary clip; onEnd fires when it finishes. Returns false if there is no clip.
+export const hasVoice = id => buffers.has('voice:' + id);
+
+export function stopVoice() {
+  if (!currentVoice) return;
+  const v = currentVoice; currentVoice = null;
+  v.onended = null; try { v.stop(); } catch {}
+  duck(false);
+}
+
+// Play a commentary clip; onEnd fires when it finishes. Returns its length in seconds, or false.
 export function playVoice(id, onEnd) {
-  const a = voiceClips.get(id);
-  if (!a) return false;
-  if (currentVoice && currentVoice !== a) { currentVoice.pause(); currentVoice.onended = null; }
-  currentVoice = a;
-  a.currentTime = 0;
-  a.onended = () => { duck(false); currentVoice = null; onEnd?.(); };
-  duck(true);
-  a.play().catch(() => { duck(false); currentVoice = null; onEnd?.(); });
-  return true;
+  const buf = buffers.get('voice:' + id);
+  if (!buf) return false;
+  resume();
+  if (AC().state !== 'running') return false;
+  stopVoice(); buses();
+  const src = AC().createBufferSource();
+  src.buffer = buf; src.connect(voiceBus);
+  src.onended = () => { if (currentVoice !== src) return; currentVoice = null; duck(false); onEnd?.(); };
+  currentVoice = src; duck(true); src.start();
+  return buf.duration;           // seconds — truthy when the clip is playing
+}
+
+export function startAmbience() {
+  _wantAmbience = true;
+  const buf = buffers.get('sfx:crowd-ambience');
+  if (!buf || ambienceSrc) return;
+  resume(); buses();
+  const ctx = AC(), g = ctx.createGain();
+  g.gain.value = SFX_VOL['crowd-ambience'];
+  ambienceSrc = ctx.createBufferSource();
+  ambienceSrc.buffer = buf; ambienceSrc.loop = true;
+  ambienceSrc.connect(g); g.connect(sfxBus); ambienceSrc.start();
+}
+export function stopAmbience() {
+  _wantAmbience = false;
+  if (ambienceSrc) { try { ambienceSrc.stop(); } catch {} ambienceSrc = null; }
+}
+// One-shot crowd reaction: 'crowd-cheer' | 'crowd-angry' | 'crowd-shocked' (ignored if it just played)
+export function crowdReact(name) {
+  const buf = buffers.get('sfx:' + name), now = performance.now();
+  if (!buf || now - (lastReact[name] || 0) < 2500) return;
+  lastReact[name] = now;
+  resume(); buses();
+  const ctx = AC(), g = ctx.createGain(), src = ctx.createBufferSource();
+  g.gain.value = SFX_VOL[name]; src.buffer = buf;
+  src.connect(g); g.connect(sfxBus); src.start();
 }
 
 // ── WHISTLE ────────────────────────────────────────────────────────────────────

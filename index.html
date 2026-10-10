@@ -24,7 +24,7 @@ import { CANVAS, PITCH, PHYSICS, RULES, MOVEMENT, POWER, SKILLS, TEAMS, ALL_TEAM
 import { initDevPanel, logCpuMatch } from './dev-panel.js';
 import { initTouchControls, setTouchMode, stick, isTouchDevice } from './touch-controls.js';
 import { LINES, COMMENTATORS } from './commentary.js';
-import { unlockAudio, sndBallHit, sndBoom, sndNiceShot, sndTap, sndGoal, sndNetBoom, playVoice, startAmbience, stopAmbience, crowdReact, startCrowd, tickCrowd, stopRetroMusic, playRetroMusic, sndWhistle } from './sound.js';
+import { unlockAudio, sndBallHit, sndBoom, sndNiceShot, sndTap, sndGoal, sndNetBoom, playVoice, stopVoice, hasVoice, startAmbience, stopAmbience, crowdReact, startCrowd, tickCrowd, stopRetroMusic, playRetroMusic, sndWhistle } from './sound.js';
 
 // ── CANVAS ────────────────────────────────────────────────────────────────────
 const cv=document.getElementById('g'), cx=cv.getContext('2d');
@@ -683,28 +683,57 @@ function initWeather(){
 let commentary=null;         // {who, text, t, maxT, reply?, replyAt?}
 let commentaryCooldown=0;    // frames before the next event can be called
 let lastKicker=null;         // last player to shoot — for goal attribution
+let lastNearMissT=-999;      // fxT of the last near miss (one reaction per incident)
 let lastShotPower=false;     // true when last shot was a power shot
 let prevGKOwner=null;        // track GK ball-ownership transitions (save detection)
 
-// Show a line and play its voice clip (if generated). A reply from the other
-// commentator follows once the first clip ends, or after a beat when text-only.
-function sayLine(line,reply){
-  commentary={who:line.who,text:line.text,t:0,maxT:200,reply,replyAt:reply?110:Infinity};
+// Importance of each moment: a more important call cuts in over a lesser one;
+// minor calls (2+ = big moments) wait for a gap so they don't hog the mic.
+const CMTRY_PRIO={goal:3,save:2,nearMiss:2,powerShot:2,longShot:2,kickoff:1,flashSteal:1,speedBoost:1};
+const recentLines={};   // event -> recently used line ids (no quick repeats)
+
+function sayLine(line,reply,prio){
+  // Text-only lines hand over to the reply after a beat; voiced ones when the clip ends
+  commentary={who:line.who,text:line.text,t:0,maxT:200,reply,replyAt:reply?60:Infinity,prio};
   const c=commentary;
-  playVoice(line.id,()=>{ if(c===commentary&&c.reply)c.replyAt=c.t+12; });
+  const secs=playVoice(line.id,()=>{ c.voiceDone=true; if(c===commentary&&c.reply)c.replyAt=c.t+12; });
+  if(secs){ c.voiced=true; c.maxT=Math.max(200,secs*60+40); if(reply)c.replyAt=Infinity; }
+}
+function pickLine(eventKey){
+  const pool=LINES[eventKey];
+  // Prefer lines that have a voice clip (or a voiced reply), then avoid recent repeats
+  const audible=pool.filter(l=>hasVoice(l.id)||(l.reply&&hasVoice(l.reply.id)));
+  const src=audible.length?audible:pool;
+  const recent=recentLines[eventKey]??=[];
+  const fresh=src.filter(l=>!recent.includes(l.id));
+  const line=(fresh.length?fresh:src)[Math.floor(Math.random()*(fresh.length?fresh:src).length)];
+  recent.push(line.id); while(recent.length>Math.max(1,Math.floor(src.length/2)))recent.shift();
+  return line;
 }
 function triggerCommentary(eventKey){
-  if(commentaryCooldown>0)return;
-  const pool=LINES[eventKey]; if(!pool)return;
-  commentaryCooldown=260;
-  const line=pool[Math.floor(Math.random()*pool.length)];
-  sayLine(line,line.reply&&Math.random()<0.6?line.reply:null);
+  if(!LINES[eventKey])return;
+  const prio=CMTRY_PRIO[eventKey]??1;
+  if(commentary&&prio<=commentary.prio)return;          // something as important is on air
+  if(commentary&&prio<3){                                // only a goal cuts in; others go next
+    if(prio>=2&&prio>(commentary.next?.prio??0))commentary.next={eventKey,prio,t:commentary.t};
+    return;
+  }
+  if(!commentary&&commentaryCooldown>0&&prio<2)return;  // minor calls wait for a gap
+  const line=pickLine(eventKey);
+  // Reply sometimes; always when only the reply has a voice clip
+  const r=line.reply, replyOnly=r&&!hasVoice(line.id)&&hasVoice(r.id);
+  stopVoice();
+  sayLine(line,r&&(replyOnly||Math.random()<0.6)?r:null,prio);
+  commentaryCooldown=prio>=2?90:360;
 }
 function tickCommentary(dt){
   if(commentaryCooldown>0)commentaryCooldown=Math.max(0,commentaryCooldown-dt);
   if(!commentary)return;
   commentary.t+=dt;
-  if(commentary.reply&&commentary.t>=commentary.replyAt){sayLine(commentary.reply,null);return;}
+  if(commentary.reply&&commentary.t>=commentary.replyAt){const nx=commentary.next;sayLine(commentary.reply,null,commentary.prio);commentary.next=nx;return;}
+  // A big moment that happened during this line gets called as soon as the line ends
+  const nx=commentary.next;
+  if(nx&&!commentary.reply&&(commentary.voiceDone||!commentary.voiced)&&commentary.t-nx.t<120){commentary=null;triggerCommentary(nx.eventKey);return;}
   if(commentary.t>=commentary.maxT)commentary=null;
 }
 
@@ -769,7 +798,7 @@ function initMatch(hDef=matchHomeDef,aDef=matchAwayDef){
   ball=mkBall();
   resetPossession();
   resetFx();
-  commentary=null; commentaryCooldown=0;
+  commentary=null; commentaryCooldown=0; stopVoice();
   triggerCommentary('kickoff');
   // Control the ST (or last outfield player if no ST)
   ctrlIdx=home.findIndex(p=>p.role==='st');
@@ -919,7 +948,7 @@ function rollTackle(p,carrier,bonus=0){
   let ch=D.baseChance+D.starBonus*(tStars-(carrier.overallStars??1))+bonus;
   if(carrier.stamina<ST.fatigueBelow)ch+=D.tiredCarrierBonus;
   if(p.stamina<ST.fatigueBelow)ch-=D.tiredTacklerPenalty;
-  if(Math.random()<clamp(ch,D.min,D.max)){addShake(FX.tackleShake);return true;}
+  if(Math.random()<clamp(ch,D.min,D.max)){addShake(FX.tackleShake);triggerCommentary('flashSteal');return true;}
   p.tackleCD=D.missCooldown; p.missT=D.missSlowFrames;
   showCallout('MISSED!',p.x,p.y-22,30);
   return false;
@@ -1483,7 +1512,7 @@ function updateBall(dt){
       const nearRight=ball.x>PX+PW-16&&Math.abs(ball.vx)>2;
       if(nearLeft||nearRight){
         const distToMouth=Math.min(Math.abs(ball.y-topPost),Math.abs(ball.y-botPost));
-        if(distToMouth<NM){showCallout('SO CLOSE! 😬',ball.x,ball.y-24,60);triggerCommentary('nearMiss');crowdReact('crowd-shocked');}
+        if(distToMouth<NM&&fxT-lastNearMissT>90){lastNearMissT=fxT;showCallout('SO CLOSE! 😬',ball.x,ball.y-24,60);triggerCommentary('nearMiss');crowdReact('crowd-shocked');}
       }
     }
   }
@@ -1671,8 +1700,8 @@ function updateControlled(p,inp,dt,cs=ctrl1){
       lastShotPower=(power > 1.0 && is3Star);
       // Charged shots fly past outfield players; only the keeper can stop them
       ball.shielded=power>=0.5; ball.passTo=null;
-      if(power > 1.0 && is3Star){sndBoom();}
-      else if(power>=CH.boomThreshold){showCallout('BOOM! 🔥',p.x,p.y-28);rumbleBoom();sndBoom();}
+      if(power > 1.0 && is3Star){sndBoom();triggerCommentary('powerShot');}
+      else if(power>=CH.boomThreshold){showCallout('BOOM! 🔥',p.x,p.y-28);rumbleBoom();sndBoom();triggerCommentary('powerShot');}
       else if(power>=CH.niceThreshold){showCallout('NICE SHOT!',p.x,p.y-26);rumbleNiceShot();sndNiceShot();}
       else{rumbleTap();sndTap();}
       if(devStats)devStats.shots[p.team==='home'?0:1]++;
